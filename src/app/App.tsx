@@ -23,7 +23,7 @@ export function App() {
   return (
     <div className="appShell">
       <header className="appHeader">
-        <p className="appKicker">Comparateur de Panier</p>
+        <p className="appKicker">Comparateur de Paniers</p>
         <h1>Comparer les prix, puis remplir le panier avec votre accord</h1>
       </header>
 

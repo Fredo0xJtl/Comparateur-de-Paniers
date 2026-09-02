@@ -11,7 +11,7 @@ describe('PWA assets', () => {
   it('defines an installable local manifest', () => {
     const manifest = JSON.parse(readProjectFile('public/manifest.webmanifest'));
 
-    expect(manifest.name).toBe('Comparateur de Panier');
+    expect(manifest.name).toBe('Comparateur de Paniers');
     expect(manifest.short_name).toBe('Panier');
     expect(manifest.start_url).toBe('/');
     expect(manifest.display).toBe('standalone');

@@ -412,6 +412,28 @@ export async function collectLeclercStore({
     const trySimplified = isStageAllowed('simplified_name');
     const tryNameOnly = isStageAllowed('name_only');
     const tryBrandOnly = isStageAllowed('brand_only');
+    // Étages déjà soumis pour CE produit, sous la forme exacte tapée dans le
+    // champ de recherche. Mesuré sur le vrai site le 02/09
+    // (tools/bench-leclerc-stages.mjs) : quand le nom Open Food Facts commence
+    // déjà par la marque ("HERTA LE BON PARIS Jambon..."), l'étage 'name_only'
+    // se réduit au premier mot significatif du nom — soit "HERTA", c'est-à-dire
+    // MOT POUR MOT la requête de l'étage 'brand_only' joué juste après. Deux
+    // recherches identiques à la suite, le second étage entièrement gaspillé
+    // (5 à 15 s par produit concerné) pour un résultat déjà connu et déjà jugé
+    // insuffisant. Rejouer une requête déjà envoyée ne peut rien apprendre de
+    // neuf : on la saute.
+    const attemptedQueries = new Set();
+    // Enregistre ce QUE CET ÉTAGE A DEMANDÉ, recomposé localement à partir du
+    // couple (nom, marque) envoyé — délibérément pas la `query` que la page
+    // renvoie. Les deux doivent coïncider, mais mélanger les deux sources
+    // rendrait la comparaison bancale : il suffirait que la page rende une
+    // requête tronquée pour qu'un étage encore utile soit sauté à tort. Avec
+    // une source unique, deux étages ne se confondent que s'ils partent
+    // vraiment du même couple (nom, marque).
+    const rememberQuery = (name, brand) => {
+      const normalized = buildLeclercSubmittedQuery(name, brand).toLowerCase();
+      if (normalized) attemptedQueries.add(normalized);
+    };
     let matchStage = null;
     // Leclerc n'indexe pas les EAN comme texte : la cascade active commence
     // directement par le nom. Le code-barres extrait d'une carte reste en
@@ -513,6 +535,7 @@ export async function collectLeclercStore({
         continue;
       }
       if (!best && search) {
+        rememberQuery(nameStageProduct.name, nameStageProduct.brand);
         debugLog('search_name_start', { product: product.name, query: search.query });
         const { candidates: nameCandidatesRaw, routeVerified: nameRouteVerified, diag: nameDiag } = await waitForProductCandidates({
           scripting,
@@ -552,7 +575,14 @@ export async function collectLeclercStore({
         // recovers a meaningful share of these without ever touching the
         // matching logic itself (still scored against the ORIGINAL name).
         const simplifiedName = sanitizeLeclercSearchText(simplifyLeclercSearchQuery(product.name));
-        if (simplifiedName && simplifiedName.toLowerCase() !== product.name.trim().toLowerCase()) {
+        const simplifiedBrand = hasRealLeclercBrand(product.brand)
+          ? dedupeBrandFromSearchName(simplifiedName, product.brand)
+          : '';
+        if (
+          simplifiedName &&
+          simplifiedName.toLowerCase() !== product.name.trim().toLowerCase() &&
+          !attemptedQueries.has(buildLeclercSubmittedQuery(simplifiedName, simplifiedBrand).toLowerCase())
+        ) {
           onProgress({
             storeKey: store.storeKey,
             state: 'product_search',
@@ -573,14 +603,13 @@ export async function collectLeclercStore({
                 // sinon la 2e chance offerte par le nom simplifié brûle son
                 // essai sur la même requête vouée à zéro résultat — et même
                 // dédoublonnage marque/nom qu'à l'étage 'name'.
-                brand: hasRealLeclercBrand(product.brand)
-                  ? dedupeBrandFromSearchName(simplifiedName, product.brand)
-                  : ''
+                brand: simplifiedBrand
               }
             ],
             signal
           );
           if (retrySearch?.started) {
+            rememberQuery(simplifiedName, simplifiedBrand);
             const { candidates: retryCandidatesRaw, routeVerified: retryRouteVerified, diag: retryDiag } = await waitForProductCandidates({
               scripting,
               tabId,
@@ -647,7 +676,11 @@ export async function collectLeclercStore({
         const isRedundantCoreKeyword =
           !hasBrandForNameOnly &&
           (!nameOnlyText || nameOnlyText.toLowerCase() === nameStageProductName.trim().toLowerCase());
-        if (nameOnlyText && !isRedundantCoreKeyword) {
+        if (
+          nameOnlyText &&
+          !isRedundantCoreKeyword &&
+          !attemptedQueries.has(buildLeclercSubmittedQuery(nameOnlyText, '').toLowerCase())
+        ) {
           onProgress({
             storeKey: store.storeKey,
             state: 'product_search',
@@ -664,6 +697,7 @@ export async function collectLeclercStore({
             signal
           );
           if (nameOnlySearch?.started) {
+            rememberQuery(nameOnlyText, '');
             const { candidates: nameOnlyCandidatesRaw, routeVerified: nameOnlyRouteVerified, diag: nameOnlyDiag } = await waitForProductCandidates({
               scripting,
               tabId,
@@ -690,7 +724,13 @@ export async function collectLeclercStore({
           }
         }
       }
-      if (!best && tryBrandOnly && hasRealLeclercBrand(product.brand)) {
+      const brandOnlyText = sanitizeLeclercSearchText(simplifyLeclercBrandQuery(product.brand));
+      if (
+        !best &&
+        tryBrandOnly &&
+        hasRealLeclercBrand(product.brand) &&
+        !attemptedQueries.has(buildLeclercSubmittedQuery(brandOnlyText, '').toLowerCase())
+      ) {
         // A verbose, fully descriptive query sometimes makes Leclerc's own
         // fuzzy search surface an entirely different family of products
         // instead of the exact one (confirmed against real fiche-produit
@@ -711,7 +751,7 @@ export async function collectLeclercStore({
           scripting,
           tabId,
           startProductSearchOnPage,
-          [{ ...product, name: sanitizeLeclercSearchText(simplifyLeclercBrandQuery(product.brand)), brand: '' }],
+          [{ ...product, name: brandOnlyText, brand: '' }],
           signal
         );
         if (brandOnlySearch?.started) {
@@ -3994,7 +4034,11 @@ export async function startProductSearchOnPage(product) {
   };
 }
 
-async function triggerLeclercLazyLoadOnPage(budgetMs = 2500) {
+// Exportée (comme d'autres fonctions injectées de ce fichier) pour que le banc
+// de mesure tools/bench-leclerc-stages.mjs déclenche le MÊME chargement paresseux
+// que la production : sans lui, une liste virtualisée ne rend presque rien et la
+// mesure conclurait à tort qu'une recherche n'a aucun résultat.
+export async function triggerLeclercLazyLoadOnPage(budgetMs = 2500) {
   // Angular 16 lazy-loads products via IntersectionObserver on a scroll
   // container (overflow: auto). The observer is rooted on the viewport, but
   // the list is in a nested scroll container, so scrollIntoView on items
@@ -4677,6 +4721,21 @@ export function sanitizeLeclercSearchText(text) {
     .replace(/%/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+// Recompose, hors de la page, la requête que `startProductSearchOnPage` va
+// taper dans le champ de recherche (`${name} ${brand}`, marque générique
+// écartée). Duplication assumée de ces deux lignes, pour la même raison que
+// normalizeEanLocal dans readProductCandidatesOnPage : cette fonction-là est
+// injectée telle quelle dans l'onglet et ne peut appeler AUCUNE fonction du
+// module. Sert uniquement à reconnaître qu'un étage s'apprête à renvoyer une
+// requête déjà envoyée (voir `attemptedQueries`), et elle est la SEULE source
+// utilisée pour cette comparaison — jamais mélangée avec la requête que la
+// page renvoie. Un test unitaire dédié vérifie que les deux compositions ne
+// divergent pas.
+export function buildLeclercSubmittedQuery(name, brand) {
+  const cleanBrand = /^(?:marque habituelle|sans marque)$/i.test(brand || '') ? '' : brand || '';
+  return `${name || ''} ${cleanBrand}`.trim();
 }
 
 export function simplifyLeclercBrandQuery(brand) {

@@ -1,44 +1,44 @@
-# Privacy
+# Confidentialité
 
-Drive Price Splitter is designed as a local-first shopping comparison PWA.
+Comparateur de Paniers est conçu comme une application web locale (PWA) de comparaison de paniers de courses : les données restent sur l'appareil.
 
-## What Stays Local
+## Ce qui reste local
 
-- Products, shopping lists, stores, candidates, mock prices and settings are stored in the browser through IndexedDB.
-- JSON backups are generated locally by the browser.
-- Imports are read locally from the selected file.
-- No account, backend, analytics, telemetry, crash reporting or remote font is required for the current release.
+- Les produits, listes de courses, magasins, candidats, prix et réglages sont stockés dans le navigateur, via IndexedDB.
+- Les sauvegardes JSON sont générées localement par le navigateur.
+- Les imports sont lus localement, depuis le fichier choisi.
+- Aucun compte, serveur, mesure d'audience, télémétrie, rapport de plantage ni police distante n'est nécessaire.
 
-## Network Boundary
+## Frontière réseau
 
-There is no backend, no account, no analytics, no telemetry and no crash reporting. The app never sends a shopping list, a basket, a price history or a backup anywhere.
+Il n'y a ni serveur, ni compte, ni mesure d'audience, ni télémétrie, ni rapport de plantage. L'application n'envoie jamais une liste de courses, un panier, un historique de prix ou une sauvegarde où que ce soit.
 
-Three network paths are allowed by policy, and only three. `npm run privacy:check` enforces this boundary in CI: any network primitive outside the declared modules, or any call to an undeclared host, fails the build.
+Trois chemins réseau sont autorisés, et seulement trois. `npm run privacy:check` fait respecter cette frontière dans l'intégration continue : toute primitive réseau hors des modules déclarés, ou tout appel vers un hôte non déclaré, fait échouer la validation.
 
-| Path | Host | What leaves the device | When |
+| Chemin | Hôte | Ce qui quitte l'appareil | Quand |
 | --- | --- | --- | --- |
-| PWA shell | same-origin only | nothing | service worker fetching static assets |
-| Barcode lookup | `world.openfoodfacts.org` | the scanned barcode (EAN) alone | only when a scanned barcode is not already in the local database |
-| Store search | `nominatim.openstreetmap.org` | the city name typed by the user, plus the store brand | only when the user runs a store search |
+| Coquille PWA | même origine uniquement | rien | le service worker récupère les ressources statiques |
+| Recherche par code-barres | `world.openfoodfacts.org` | le code-barres scanné (EAN), seul | uniquement si le code scanné n'est pas déjà dans la base locale |
+| Recherche de magasin | `nominatim.openstreetmap.org` | le nom de ville saisi par l'utilisateur, et l'enseigne | uniquement quand l'utilisateur lance une recherche de magasin |
 
-Both third-party services are public, free and account-less; neither receives an identifier, a list, a price or a basket. As with any HTTP request, they do see the device's IP address and can log it under their own policies ([Open Food Facts](https://world.openfoodfacts.org/privacy), [OpenStreetMap Foundation](https://osmfoundation.org/wiki/Privacy_Policy)). Store searches are rate-limited to one request per second to comply with the Nominatim usage policy.
+Ces deux services tiers sont publics, gratuits et sans compte ; aucun ne reçoit d'identifiant, de liste, de prix ni de panier. Comme pour toute requête HTTP, ils voient en revanche l'adresse IP de l'appareil et peuvent la journaliser selon leurs propres politiques ([Open Food Facts](https://world.openfoodfacts.org/privacy), [Fondation OpenStreetMap](https://osmfoundation.org/wiki/Privacy_Policy)). Les recherches de magasin sont limitées à une requête par seconde, conformément aux conditions d'usage de Nominatim.
 
-Every other feature — comparison, shopping lists, history, backups — works fully offline.
+Toutes les autres fonctions — comparaison, listes, historique, sauvegardes — fonctionnent entièrement hors ligne.
 
-### Drive collection (browser extension)
+### Collecte des prix Drive (extension de navigateur)
 
-The optional connector extension drives the store's own website in a real browser tab, using the user's own session, exactly as a manual visit would. It holds host permissions for `leclercdrive.fr` and `coursesu.com` only, sends nothing to any third party, and stores its state in the browser's session storage. Opening a store website moves the user onto that store's own privacy policy.
+Le connecteur facultatif pilote le site de l'enseigne dans un véritable onglet de navigateur, avec la session de l'utilisateur, exactement comme le ferait une visite manuelle. Il ne détient de permissions que pour `leclercdrive.fr` et `coursesu.com`, n'envoie rien à un tiers, et conserve son état dans le stockage de session du navigateur. Ouvrir le site d'une enseigne fait entrer l'utilisateur dans la politique de confidentialité de cette enseigne.
 
-The optional cart-fill flow can search products and click “Add to cart” in the supported store tabs, but only after a visible user action and explicit first-use consent. It does not submit an order, access payment or extract credentials. Manual product links remain available; once a store tab is opened, that retailer’s own privacy policy applies.
+Le remplissage de panier facultatif peut rechercher des produits et cliquer sur « Ajouter au panier » dans les onglets d'enseigne, mais uniquement après une action visible de l'utilisateur et un consentement explicite au premier usage. Il ne valide aucune commande, n'accède à aucun moyen de paiement et n'extrait aucun identifiant. Les liens produits manuels restent disponibles.
 
-## Sensitive Data
+## Données sensibles
 
-Shopping lists and backups can reveal habits, preferred stores and prices. Treat exported JSON files as private files.
+Les listes de courses et les sauvegardes peuvent révéler des habitudes, des magasins fréquentés et des prix. Les fichiers JSON exportés sont à traiter comme des fichiers privés.
 
-Do not publish real backups, screenshots containing personal shopping data, store credentials, cookies, sessions, payment data or private store URLs in issues or commits.
+Ne publie jamais, dans une issue ou un commit, de sauvegarde réelle, de capture d'écran contenant des données de courses personnelles, d'identifiants d'enseigne, de cookies, de sessions, de données de paiement ni d'adresses de magasin privées.
 
-## Known Limits
+## Limites connues
 
-- Browser storage is local but not guaranteed permanent. The browser or device can clear it.
-- Backups are not encrypted in the current release.
-- External store websites have their own privacy policies once opened manually.
+- Le stockage du navigateur est local mais pas garanti permanent : le navigateur ou l'appareil peuvent le vider.
+- Les sauvegardes ne sont pas chiffrées.
+- Les sites d'enseigne ont leur propre politique de confidentialité dès qu'ils sont ouverts.
