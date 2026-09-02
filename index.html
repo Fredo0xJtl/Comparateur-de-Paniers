@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#24583a" />
+    <!-- Marker checked by extension/bridge/pwa-bridge.js before wiring the
+         Drive-refresh message relay: content_script match patterns can't be
+         scoped to a port, so on localhost/127.0.0.1 any other dev server the
+         user happens to run would otherwise also receive the bridge script. -->
+    <meta name="drive-price-splitter-app" content="1" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>Comparateur de Panier</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

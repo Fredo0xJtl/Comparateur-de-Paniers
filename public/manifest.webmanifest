@@ -1,0 +1,18 @@
+{
+  "name": "Comparateur de Panier",
+  "short_name": "Panier",
+  "description": "Comparateur local de panier entre drives, sans compte ni automatisation cachée.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f2",
+  "theme_color": "#24583a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
