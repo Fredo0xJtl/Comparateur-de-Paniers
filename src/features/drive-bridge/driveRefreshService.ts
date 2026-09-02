@@ -336,6 +336,10 @@ export type DriveRefreshDiagnostic = {
     promotionLabel?: string;
     productUrl?: string;
     matchScore?: number;
+    // Étage de la cascade qui a réellement fourni ce prix ('name',
+    // 'simplified_name', 'name_only', 'brand_only'), ou le chemin qui a
+    // court-circuité la recherche ('manual', 'known_url').
+    matchStage?: DrivePriceObservationV1['matchStage'];
     // Détail de chaque étage de la cascade Leclerc réellement tenté, même
     // sur un succès — voir DriveStageAttemptV1.
     stageAttempts?: DriveStageAttemptV1[];
@@ -847,6 +851,15 @@ export async function runDriveRefresh(
       promotionLabel: observation.promotionLabel,
       productUrl: observation.productUrl,
       matchScore: observation.matchScore,
+      // Étage réellement retenu (02/09) : `stageAttempts` disait quels étages
+      // avaient été tentés, jamais lequel avait gagné. Le déduire du dernier
+      // étage tenté est faux dès qu'un repli de marque est retenu (le
+      // fallbackBest d'un étage antérieur — voir collectLeclercStore), et
+      // impossible pour 'manual'/'known_url', qui ne tentent aucun étage.
+      // Sans cette valeur, aucune mesure fiable de « quel étage trouve le
+      // plus souvent » n'est possible depuis les exports — voir
+      // tools/analyse-cascade.mjs.
+      ...(observation.matchStage ? { matchStage: observation.matchStage } : {}),
       ...(observation.stageAttempts ? { stageAttempts: observation.stageAttempts } : {})
     }))
   };
