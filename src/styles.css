@@ -1,0 +1,1131 @@
+:root {
+  color: #172018;
+  background: #f7f7f2;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(180deg, rgba(247, 247, 242, 0.95), rgba(239, 242, 236, 0.95)),
+    #f7f7f2;
+}
+
+a {
+  color: inherit;
+}
+
+.appShell {
+  min-height: 100vh;
+}
+
+.appHeader {
+  padding: 28px 20px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid #dfe4dc;
+}
+
+.appHeader h1 {
+  max-width: 720px;
+  margin: 4px auto 0;
+  font-size: clamp(1.65rem, 7vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.appKicker,
+.eyebrow {
+  margin: 0;
+  color: #53624f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appKicker {
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.appMain {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 24px 16px 36px;
+}
+
+@media (max-width: 480px) {
+  .appMain {
+    padding: 20px 14px 32px;
+  }
+}
+
+/* Affiché le temps qu'un chunk de page chargé à la demande arrive. */
+.loadingHint {
+  padding: 24px 0;
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* Écran de repli quand une page lève une exception ou n'a pas pu être
+   chargée — voir src/app/ErrorBoundary.tsx. */
+.errorBoundary {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #d8c3c3;
+  border-radius: 12px;
+  background: #fdf6f6;
+}
+
+.errorBoundary h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.errorBoundary p {
+  margin: 0;
+}
+
+.errorBoundaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.errorBoundary pre {
+  overflow-x: auto;
+  margin: 8px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: 0.85rem;
+}
+
+.pageStack {
+  display: grid;
+  gap: 22px;
+}
+
+.pageStack h2 {
+  margin: 4px 0 0;
+  font-size: clamp(1.45rem, 6vw, 2.2rem);
+  line-height: 1.1;
+}
+
+.lead {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  color: #4c5648;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* "Économies réalisées" est désormais sortie de cette grille vers le
+   .savingsHero au-dessus (HomePage) : il ne reste que 2 paniers à afficher. */
+.statusGrid--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.statusGrid article {
+  min-height: 88px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.statusGrid span {
+  display: block;
+  color: #66725f;
+  font-size: 0.82rem;
+}
+
+.statusGrid strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.05rem;
+}
+
+.productList {
+  display: grid;
+  gap: 12px;
+}
+
+.productCard,
+.settingsPanel {
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.productCard {
+  display: grid;
+  gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .productCard,
+  .settingsPanel {
+    padding: 16px;
+  }
+
+  .productCard {
+    gap: 14px;
+  }
+}
+
+.productCard h3,
+.settingsPanel h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.productCard p,
+.settingsPanel p {
+  margin: 6px 0 0;
+  color: #5d6858;
+}
+
+.productCard dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.productCard dt {
+  color: #66725f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.productCard dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.settingsPanel {
+  display: grid;
+  gap: 14px;
+}
+
+/* Bandeau économie réalisée — élément visuel n°1 de l'écran (ComparePage,
+   HomePage) : direction validée sur le canevas Claude Design, cf.
+   docs/JOURNAL_TECHNIQUE.md. */
+.savingsHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 18px 20px;
+  background: #24583a;
+  border-radius: 14px;
+  text-align: center;
+}
+
+.savingsHeroLabel {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.savingsHeroAmount {
+  margin: 2px 0 0;
+  color: #ffffff;
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.savingsHeroDivider {
+  width: 100%;
+  max-width: 220px;
+  margin: 14px 0 0;
+  border-top: 2px dashed rgba(255, 255, 255, 0.35);
+}
+
+.savingsHeroSub {
+  margin: 12px 0 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .savingsHero {
+    padding: 18px 16px 16px;
+  }
+
+  .savingsHeroAmount {
+    font-size: 2.2rem;
+  }
+}
+
+.comparisonMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.comparisonMetrics article {
+  min-height: 88px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.comparisonMetrics span {
+  display: block;
+  color: #66725f;
+  font-size: 0.82rem;
+}
+
+.comparisonMetrics strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.18rem;
+}
+
+.comparisonMetrics p {
+  margin: 8px 0 0;
+  color: #66725f;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.thresholdControl {
+  display: grid;
+  gap: 8px;
+  font-weight: 700;
+  padding: 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.thresholdControl span {
+  font-size: 0.9rem;
+  color: #53624f;
+  display: block;
+}
+
+.thresholdControl input[type="range"] {
+  min-height: 48px;
+  width: 100%;
+  padding: 8px 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+}
+
+.thresholdControl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  background: #2d5a3d;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.thresholdControl input[type="range"]::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  background: #2d5a3d;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.thresholdControl input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #dfe4dc;
+  border-radius: 3px;
+}
+
+.thresholdControl input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: #dfe4dc;
+  border-radius: 3px;
+  border: none;
+}
+
+.comparisonDecisionList {
+  display: grid;
+  gap: 10px;
+}
+
+.comparisonDecision {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.comparisonDecisionWarning {
+  background: #fff7f4;
+  border-color: #e0b9b4;
+}
+
+/* Correspondance seulement probable : l'avertissement porte maintenant une
+   action (confirmer la fiche), il doit donc se voir — un texte grisé de plus
+   dans la carte se lisait comme un détail sans importance. */
+.comparisonDecisionCheck {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff7f4;
+  border: 1px solid #e0b9b4;
+  border-radius: 6px;
+}
+
+.comparisonDecisionCheck p {
+  margin: 0;
+}
+
+.comparisonDecision h4 {
+  margin: 0;
+}
+
+.comparisonDecision p {
+  margin: 4px 0 0;
+}
+
+.comparisonDecisionPrice {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #2f3a2a;
+}
+
+.coverageBreakdown {
+  padding: 10px 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.coverageBreakdown summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.coverageBreakdownList {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+/* Grille à 3 colonnes fixes (nom | prix/statut | lien) au lieu d'un flex à
+   nombre d'enfants variable : avec `justify-content: space-between`, un
+   <li> à 2 enfants (pas de lien produit) et un <li> à 3 enfants (avec lien)
+   se répartissaient différemment, donnant une impression d'alignement
+   incohérent ligne à ligne. La colonne lien garde une largeur minimale même
+   vide (span de réserve ci-dessous) pour que toutes les lignes s'alignent
+   pareil, qu'un lien existe ou non. */
+.coverageBreakdownList li {
+  display: grid;
+  /* La 3e colonne (actions) était en `auto` sans borne haute : un bouton
+     "Voir le produit"/"Valider cette page" (min-height 48px, padding 18px)
+     ou un message d'erreur non wrappé pouvait l'élargir sans limite au
+     détriment de la colonne statut voisine (retour explicite du 31/08 —
+     voir .coverageBreakdownAction ci-dessous). Bornée à 200px : assez pour
+     le bouton le plus large, jamais plus. */
+  grid-template-columns: minmax(0, 1fr) minmax(90px, auto) minmax(120px, 200px);
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.coverageBreakdownName {
+  overflow-wrap: anywhere;
+}
+
+.coverageBreakdownStatus {
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.coverageBreakdownStatus--priced {
+  color: #2f3a2a;
+}
+
+.coverageBreakdownStatus--requiresValidation {
+  color: #8f3a1c;
+  font-size: 0.9rem;
+}
+
+.coverageBreakdownStatus--unavailable,
+.coverageBreakdownStatus--notFound {
+  color: #8a9082;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+/* .coverageBreakdownActions est le vrai 3e enfant de grille (voir le
+   commentaire "arité fixe" plus haut) : il regroupe le lien "Voir le
+   produit" et, quand la ligne n'est pas encore au prix ferme, le bouton
+   "Valider cette page" — les deux empilés pour rester lisibles dans une
+   colonne étroite plutôt que de s'écraser côte à côte. */
+.coverageBreakdownActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  justify-self: end;
+}
+
+.coverageBreakdownLink {
+  justify-self: end;
+}
+
+.coverageBreakdownAction {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  /* Sans ça, un enfant flex garde par défaut sa largeur de contenu minimale
+     (min-width: auto) — le bouton "Voir le produit"/"Valider cette page"
+     (min-height 48px, padding généreux, pensé pour un usage pleine largeur
+     ailleurs) empêchait alors toute compression, forçant la colonne grid
+     "actions" (auto) à s'élargir au détriment de la colonne "statut" voisine
+     (retour explicite du 31/08 : statut compressé à quelques pixels, wrap
+     lettre par lettre, chevauchement visuel avec le bouton). */
+  min-width: 0;
+}
+
+.coverageBreakdownAction .panelText {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Sur un écran étroit, les colonnes statut ("Indisponible chez ce magasin")
+   et lien ("Voir le produit") occupent à elles deux presque toute la
+   largeur : la colonne nom (minmax(0, 1fr)) se retrouve écrasée à quelques
+   pixels, et overflow-wrap: anywhere se met alors à couper le nom du
+   produit lettre par lettre (une lettre par ligne) au lieu de mots entiers —
+   illisible. En dessous de 480px, le nom passe sur sa propre ligne pleine
+   largeur, statut et lien se partageant la ligne suivante. */
+@media (max-width: 480px) {
+  .coverageBreakdownList li {
+    /* `auto` (non borné) laissait le bouton "Voir le produit"/"Valider
+       cette page" (48px de haut, padding généreux) ou un message d'erreur
+       non wrappé imposer sa propre largeur à la colonne "link", écrasant
+       "status" à côté jusqu'à quelques pixels (retour explicite du 31/08 :
+       texte statut coupé lettre par lettre, chevauchement visuel avec le
+       bouton). Partage à parts égales à la place, chacune pouvant se
+       compresser jusqu'à 0 (minmax(0, 1fr)) plutôt que d'en écraser une
+       seule sans limite. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: 'name name' 'status link';
+  }
+
+  .coverageBreakdownName {
+    grid-area: name;
+  }
+
+  .coverageBreakdownStatus {
+    grid-area: status;
+    text-align: left;
+  }
+
+  .coverageBreakdownActions {
+    grid-area: link;
+    align-items: flex-start;
+  }
+}
+
+.warningList {
+  margin: 0;
+  padding-left: 20px;
+  color: #8f3a1c;
+}
+
+.alternateQuantityPicker {
+  display: grid;
+  gap: 6px;
+}
+
+.alternateQuantityPickerLabel {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6b4a2f;
+}
+
+.alternateQuantityButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alternateQuantityButton {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #cfa98a;
+  background: #fff;
+  color: #6b4a2f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.alternateQuantityButton:hover,
+.alternateQuantityButton:focus-visible {
+  background: #fdf1e6;
+}
+
+.shoppingRows {
+  display: grid;
+  gap: 10px;
+}
+
+.shoppingRow {
+  display: grid;
+  grid-template-columns: 1fr minmax(76px, 96px) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.shoppingRow h4 {
+  margin: 0;
+}
+
+.shoppingRow p {
+  margin: 4px 0 0;
+}
+
+.shoppingRow label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.shoppingRow input {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 12px;
+  font: inherit;
+  border: 1px solid #cfd8ca;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.quickAddGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.quickAddButton {
+  justify-content: center;
+  min-height: 48px;
+}
+
+.selectedStoreList {
+  display: grid;
+  gap: 12px;
+}
+
+.selectedStoreCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.confirmPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  background: #fff7f4;
+  border: 1px solid #e0b9b4;
+  border-radius: 8px;
+}
+
+.copyFallbackText {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  color: #172018;
+  white-space: pre-wrap;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+.productForm {
+  display: grid;
+  gap: 12px;
+}
+
+.productForm label {
+  display: grid;
+  gap: 8px;
+  color: #2d3a2a;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.productForm input,
+.productForm select {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 12px;
+  color: #172018;
+  font: inherit;
+  background: #fbfcf8;
+  border: 1px solid #cfd8ca;
+  border-radius: 8px;
+}
+
+.productForm small {
+  color: #9f2f25;
+}
+
+.checkboxLabel {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  font-weight: 700;
+}
+
+.checkboxLabel input {
+  min-height: 20px;
+  width: 20px;
+}
+
+.checkboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #cfd8ca;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0;
+}
+
+.checkboxGroup legend {
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.formActions,
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primaryButton {
+  min-height: 48px;
+  padding: 12px 20px;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  font-size: 1rem;
+  background: #24583a;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.primaryButton:active {
+  background: #1a3f2a;
+}
+
+.secondaryButton,
+.dangerButton {
+  min-height: 48px;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 800;
+  font-size: 1rem;
+  background: #ffffff;
+  border: 1px solid #bdc8b7;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.secondaryButton:active {
+  background: #f5f5f2;
+}
+
+.dangerButton {
+  color: #9f2f25;
+  border-color: #e0b9b4;
+}
+
+.successButton {
+  color: #ffffff;
+  background: #24583a;
+  border-color: #24583a;
+}
+
+.successButton:active {
+  background: #1a3f2a;
+}
+
+.buttonLink {
+  min-height: 48px;
+  display: inline-grid;
+  width: fit-content;
+  place-items: center;
+  padding: 12px 20px;
+  color: #24583a;
+  font-weight: 800;
+  font-size: 1rem;
+  text-decoration: none;
+  background: #ffffff;
+  border: 1px solid #bdc8b7;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.buttonLink:active {
+  background: #f5f5f2;
+}
+
+.fileButton {
+  cursor: pointer;
+}
+
+.fileButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.scanPreviewWrap {
+  position: relative;
+}
+
+.scanPreview {
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  background: #172018;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+@media (max-width: 480px) {
+  .scanPreview {
+    aspect-ratio: 16 / 10;
+  }
+}
+
+.scanSuccessFlash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(45, 138, 82, 0.85);
+  border-radius: 8px;
+  animation: scanSuccessPop 0.35s ease-out;
+}
+
+.advancedScanControls {
+  padding: 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.advancedScanControls summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #2d5a3d;
+  padding: 8px;
+  margin: -8px;
+  padding-left: 0;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advancedScanControls summary:hover {
+  color: #1a3f2a;
+}
+
+.advancedScanControls[open] {
+  background: #ffffff;
+  border-color: #9fc8ab;
+}
+
+.advancedScanControls[open] > :not(summary) {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.scanInfoPanel {
+  padding: 12px;
+  background: #fbfcf8;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.scanInfoPanel summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #2d5a3d;
+  padding: 8px;
+  margin: -8px;
+  padding-left: 0;
+  user-select: none;
+}
+
+.scanInfoPanel summary:hover {
+  color: #1a3f2a;
+}
+
+.scanInfoPanel[open] {
+  background: #ffffff;
+}
+
+.scanInfoPanel[open] > :not(summary) {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #dfe4dc;
+}
+
+.scanPageLayout {
+  gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .scanPageLayout {
+    gap: 12px;
+  }
+}
+
+@keyframes scanSuccessPop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.dangerButton:focus-visible,
+.buttonLink:focus-visible,
+.navLink:focus-visible {
+  outline: 3px solid #9fc8ab;
+  outline-offset: 2px;
+}
+
+.panelText {
+  margin: 0;
+  color: #4c5648;
+}
+
+.panelTextDanger {
+  color: #9f2f25;
+}
+
+.panelTextWarning {
+  color: #8f3a1c;
+}
+
+.panelTextMuted {
+  color: #7b8574;
+  font-size: 0.85rem;
+}
+
+.topNav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(8px, env(safe-area-inset-right)) 8px
+    max(8px, env(safe-area-inset-left));
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #d8ded4;
+}
+
+.navLink {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 6px 4px;
+  color: #4e5a49;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+@media (max-width: 400px) {
+  /* "Comparer"/"Réglages" are single unbreakable words wider than their 1/6
+     grid column on narrow phones (measured ~65px content in a ~57px cell at
+     the base font-size) — the browser has no break point inside the word,
+     so the text just overflows into the neighbouring nav link instead.
+     Shrinking the font a bit here is cleaner than force-breaking mid-word. */
+  .navLink {
+    font-size: 0.68rem;
+    padding: 6px 2px;
+  }
+}
+
+.navLinkActive {
+  color: #ffffff;
+  background: #24583a;
+}
+
+@media (min-width: 760px) {
+  .topNav {
+    position: sticky;
+    top: 0;
+    max-width: 760px;
+    margin: 0 auto;
+    border: 1px solid #d8ded4;
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+  }
+}
+
+@media (max-width: 560px) {
+  .comparisonMetrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background: rgba(23, 32, 24, 0.55);
+}
+
+.modalContent {
+  width: 100%;
+  max-width: 560px;
+  margin-top: 24px;
+  background: #f7f7f2;
+  border: 1px solid #dfe4dc;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(23, 32, 24, 0.28);
+}
+
+.modalContent .settingsPanel {
+  border: 0;
+  border-radius: 0 0 10px 10px;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #dfe4dc;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.modalCloseButton {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: #172018;
+  font-size: 1rem;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.modalCloseButton:focus-visible {
+  outline: 3px solid #9fc8ab;
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .modalOverlay {
+    padding: 12px;
+  }
+
+  .modalContent {
+    margin-top: 8px;
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Drive Price Splitter Connector",
+  "description": "Collecte locale et volontaire des prix affichés par les catalogues Drive sélectionnés.",
+  "version": "0.5.97",
+  "permissions": ["tabs", "storage", "scripting"],
+  "host_permissions": [
+    "https://*.leclercdrive.fr/*",
+    "https://*.coursesu.com/*"
+  ],
+  "background": {
+    "scripts": ["background/service-worker.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Comparateur de Paniers — Drive"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://fredo0xjtl.github.io/Comparateur-de-Paniers/*"
+      ],
+      "js": ["bridge/pwa-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "options_page": "options/options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "drive-price-splitter@fredo0xjtl.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  }
+}

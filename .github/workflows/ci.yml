@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Privacy check
+        run: npm run privacy:check
+
+      - name: Extension manifest check
+        run: npm run extension:check
+
+      # Les vulnérabilités de dépendances passaient jusqu'ici entièrement
+      # sous le radar de la CI (4 avis "high" ouverts au moment de l'ajout).
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Build
+        run: npm run build
+

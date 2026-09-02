@@ -1,0 +1,28 @@
+:root {
+  color: #172018;
+  background: #f7f7f2;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  width: min(100% - 32px, 640px);
+  margin: 40px auto;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+}
+
+dd {
+  margin: 0;
+}

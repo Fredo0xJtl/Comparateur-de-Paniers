@@ -1,0 +1,38 @@
+# Dépendances et sorties de build
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
+
+# Éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Journaux
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets et certificats — ne doivent jamais être versionnés
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Sauvegardes et diagnostics exportés depuis l'application : ils contiennent
+# les données réelles de l'utilisateur (liste de courses, magasins, prix).
+backup-*.json
+diagnostic-*.json
+cart-fill-*.json
