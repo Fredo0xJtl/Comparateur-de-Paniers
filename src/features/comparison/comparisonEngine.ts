@@ -427,15 +427,22 @@ function selectOptimizedDecision(
         ...(betterFormatWarning ? [betterFormatWarning] : [])
       ])
     ],
-    signals: uniqueSignals([
-      ...selected.signals,
-      ...(formatMismatchWarnings.some((warning) => warning.includes('à vérifier'))
-        ? [{ code: 'FORMAT_CONFIRMATION_REQUIRED' as const, severity: 'blocking' as const }]
-        : []),
-      ...(unitPriceEvidenceWarnings.length > 0
-        ? [{ code: 'PRICE_MISMATCH' as const, severity: 'blocking' as const }]
-        : [])
-    ]),
+    // `unitPriceEvidenceWarnings` ne produit plus de signal bloquant ici
+    // (audit du 02/09, F-01) : il regarde le meilleur candidat des DEUX
+    // magasins, donc un prix incohérent chez le magasin NON retenu bloquait
+    // quand même la ligne — alors que le prix incohérent du magasin
+    // réellement retenu, lui, est déjà signalé par `selected.signals`
+    // (voir buildOptionsForRow). Le texte d'avertissement, lui, reste
+    // affiché dans `warnings` ci-dessus : l'information ne se perd pas.
+    signals: applyWarningAcknowledgement(
+      uniqueSignals([
+        ...selected.signals,
+        ...(formatMismatchWarnings.some((warning) => warning.includes('à vérifier'))
+          ? [{ code: 'FORMAT_CONFIRMATION_REQUIRED' as const, severity: 'blocking' as const }]
+          : [])
+      ]),
+      row.item
+    ),
     requiresValidation: false,
     alternates,
     storeCandidateIds

@@ -1533,4 +1533,136 @@ describe('comparisonEngine', () => {
       expect(decision2?.warnings.some((w) => w.includes('Aucun résultat propre trouvé'))).toBe(false);
     });
   });
+
+  // Audit du 02/09 (F-01/F-02) : les deux alertes « prix incohérent » et
+  // « format à confirmer » bloquaient la validation du panier ENTIER sans
+  // aucune issue — « Actualiser » relisait la même fiche et retrouvait le
+  // même écart. Elles ne bloquent plus que si elles concernent le magasin
+  // réellement retenu, et l'utilisateur peut les lever après vérification.
+  describe('alertes bloquantes levables (audit 02/09)', () => {
+    const makeCoherenceCandidate = (id: string, storeKey: 'leclerc' | 'hyperu') => ({
+      id,
+      productId: 'prod-coherence',
+      storeKey,
+      name: `Beurre demi-sel chez ${storeKey}`,
+      quantity: 250,
+      unit: 'g' as const,
+      matchType: 'exact_barcode' as const,
+      confidenceScore: 100,
+      confidenceReasons: ['code-barres identique'],
+      createdAt: '2026-09-02T08:00:00.000Z',
+      updatedAt: '2026-09-02T08:00:00.000Z'
+    });
+
+    const makeCoherenceSnapshot = (
+      id: string,
+      candidateId: string,
+      storeKey: 'leclerc' | 'hyperu',
+      price: number,
+      priceCoherence?: 'ok' | 'mismatch'
+    ) => ({
+      id,
+      candidateId,
+      storeKey,
+      price,
+      currency: 'EUR' as const,
+      available: true,
+      checkedAt: new Date().toISOString(),
+      source: 'adapter' as const,
+      ...(priceCoherence ? { priceCoherence } : {})
+    });
+
+    const coherenceRow = {
+      product: {
+        id: 'prod-coherence',
+        name: 'Beurre demi-sel',
+        createdAt: '2026-09-02T08:00:00.000Z',
+        updatedAt: '2026-09-02T08:00:00.000Z'
+      },
+      item: {
+        id: 'item-coherence',
+        shoppingListId: 'list-active',
+        productId: 'prod-coherence',
+        wantedQuantity: 1,
+        createdAt: '2026-09-02T08:00:00.000Z'
+      }
+    };
+
+    const candidates = [
+      makeCoherenceCandidate('cand-coherence-leclerc', 'leclerc'),
+      makeCoherenceCandidate('cand-coherence-hyperu', 'hyperu')
+    ];
+
+    it('ne bloque pas le panier quand le prix incohérent vient du magasin NON retenu', () => {
+      const result = compareShoppingList({
+        rows: [coherenceRow],
+        candidates,
+        priceSnapshots: [
+          makeCoherenceSnapshot('price-coherence-leclerc', 'cand-coherence-leclerc', 'leclerc', 2),
+          // Le magasin le plus cher, donc jamais retenu — son incohérence ne
+          // doit pas condamner la ligne.
+          makeCoherenceSnapshot('price-coherence-hyperu', 'cand-coherence-hyperu', 'hyperu', 3, 'mismatch')
+        ],
+        savingThresholdEuro: 3,
+        autoDecisionMinConfidence: 75,
+        maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+      });
+
+      const decision = result.decisions.find((d) => d.itemId === 'item-coherence');
+      expect(decision?.selectedStoreKey).toBe('leclerc');
+      // L'information reste affichée...
+      expect(decision?.warnings).toContain('Prix incohérent avec le prix au litre/kilo affiché — à vérifier.');
+      // ...mais elle n'immobilise plus la validation.
+      expect(decision?.signals.some((signal) => signal.code === 'PRICE_MISMATCH')).toBe(false);
+      expect(result.trustReport.canValidateBasket).toBe(true);
+    });
+
+    it('bloque tant que le prix incohérent porte sur le magasin retenu', () => {
+      const result = compareShoppingList({
+        rows: [coherenceRow],
+        candidates,
+        priceSnapshots: [
+          makeCoherenceSnapshot('price-coherence-leclerc', 'cand-coherence-leclerc', 'leclerc', 2, 'mismatch'),
+          makeCoherenceSnapshot('price-coherence-hyperu', 'cand-coherence-hyperu', 'hyperu', 3)
+        ],
+        savingThresholdEuro: 3,
+        autoDecisionMinConfidence: 75,
+        maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+      });
+
+      const decision = result.decisions.find((d) => d.itemId === 'item-coherence');
+      expect(decision?.selectedStoreKey).toBe('leclerc');
+      expect(
+        decision?.signals.find((signal) => signal.code === 'PRICE_MISMATCH')?.severity
+      ).toBe('blocking');
+      expect(result.trustReport.canValidateBasket).toBe(false);
+    });
+
+    it('rétrograde l’alerte en avertissement une fois la ligne vérifiée par l’utilisateur', () => {
+      const result = compareShoppingList({
+        rows: [
+          {
+            ...coherenceRow,
+            item: { ...coherenceRow.item, checkedDespiteWarningsAt: '2026-09-02T09:00:00.000Z' }
+          }
+        ],
+        candidates,
+        priceSnapshots: [
+          makeCoherenceSnapshot('price-coherence-leclerc', 'cand-coherence-leclerc', 'leclerc', 2, 'mismatch'),
+          makeCoherenceSnapshot('price-coherence-hyperu', 'cand-coherence-hyperu', 'hyperu', 3)
+        ],
+        savingThresholdEuro: 3,
+        autoDecisionMinConfidence: 75,
+        maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+      });
+
+      const decision = result.decisions.find((d) => d.itemId === 'item-coherence');
+      // L'alerte reste visible : on informe toujours, on ne bloque plus.
+      expect(decision?.warnings).toContain('Prix incohérent avec le prix au litre/kilo affiché — à vérifier.');
+      expect(
+        decision?.signals.find((signal) => signal.code === 'PRICE_MISMATCH')?.severity
+      ).toBe('warning');
+      expect(result.trustReport.canValidateBasket).toBe(true);
+    });
+  });
 });

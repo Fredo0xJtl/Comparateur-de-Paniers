@@ -34,7 +34,8 @@ import {
 import { type DriveRefreshProgressEvent } from '../features/drive-bridge/extensionBridge';
 import {
   setShoppingListItemCandidateOverride,
-  setShoppingListItemStoreOverride
+  setShoppingListItemStoreOverride,
+  setShoppingListItemWarningsAcknowledged
 } from '../features/shopping-list/shoppingListService';
 import { updateSettings } from '../features/settings/settingsService';
 import {
@@ -305,6 +306,17 @@ export function ComparePage() {
 
   async function handleForceCandidate(itemId: string, candidateId: string | null) {
     await setShoppingListItemCandidateOverride(itemId, candidateId);
+    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    setComparison(loadedComparison);
+  }
+
+  // Seule sortie possible pour « prix incohérent » et « format à confirmer » :
+  // ces deux alertes viennent d'une comparaison entre deux valeurs lues sur la
+  // même fiche, donc actualiser relit la même fiche et retrouve le même écart.
+  // Sans cette levée, un seul produit concerné rendait le panier entier
+  // définitivement non validable (audit du 02/09, F-01/F-02).
+  async function handleAcknowledgeWarnings(itemId: string) {
+    await setShoppingListItemWarningsAcknowledged(itemId, true);
     const loadedComparison = await loadActiveComparison({ refreshPrices: false });
     setComparison(loadedComparison);
   }
@@ -693,7 +705,12 @@ export function ComparePage() {
             </div>
           </div>
 
-          <TrustSummaryPanel report={result.trustReport} onRefresh={() => void handleDriveRefresh()} />
+          <TrustSummaryPanel
+            report={result.trustReport}
+            onRefresh={() => void handleDriveRefresh()}
+            onAcknowledgeWarnings={(itemId) => void handleAcknowledgeWarnings(itemId)}
+            productNameById={productNameById}
+          />
 
           <div className="cardActions">
             <button
@@ -849,9 +866,32 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   );
 }
 
-function TrustSummaryPanel({ report, onRefresh }: { report: ComparisonResult['trustReport']; onRefresh: () => void }) {
+// Les deux alertes bloquantes qu'aucune action automatique ne peut lever :
+// elles comparent deux valeurs lues sur la MÊME fiche, donc actualiser relit
+// la même page et retrouve le même écart. Elles n'ont leur place ni dans le
+// bouton « Actualiser » (sans effet) ni dans le lien vers « Produits à
+// valider » (qui ne liste que les lignes `requiresValidation`, dont ces
+// lignes-là ne font justement pas partie — le lien menait donc à un panneau
+// affichant « aucun produit à valider » pendant que la validation restait
+// interdite). Voir l'audit du 02/09, F-01/F-02.
+const ACKNOWLEDGEABLE_ISSUE_CODES = new Set<TrustIssue['code']>(['price_mismatch', 'different_format']);
+
+function TrustSummaryPanel({
+  report,
+  onRefresh,
+  onAcknowledgeWarnings,
+  productNameById
+}: {
+  report: ComparisonResult['trustReport'];
+  onRefresh: () => void;
+  onAcknowledgeWarnings: (itemId: string) => void;
+  productNameById: Map<string, string>;
+}) {
   const firstBlocking = report.issues.find((issue) => issue.severity === 'blocking');
   const labels = { trusted: 'Calcul fiable', attention: 'Calcul fiable avec réserves', blocked: 'Estimation bloquée' } as const;
+  const blockingProductName = firstBlocking?.productId ? productNameById.get(firstBlocking.productId) : undefined;
+  const acknowledgeableItemId =
+    firstBlocking && ACKNOWLEDGEABLE_ISSUE_CODES.has(firstBlocking.code) ? firstBlocking.itemId : undefined;
   return (
     <div className="settingsPanel" aria-label="Niveau de confiance du calcul">
       <div>
@@ -861,12 +901,27 @@ function TrustSummaryPanel({ report, onRefresh }: { report: ComparisonResult['tr
             ? `${report.blockingIssueCount} anomalie(s) critique(s) : les totaux restent visibles à titre d’estimation, mais aucune recommandation ni validation de panier n’est autorisée.`
             : `${report.summary.trustedDecisionCount}/${report.summary.itemCount} ligne(s) fiables ; ${report.warningIssueCount} réserve(s).`}
         </p>
-        {firstBlocking && <p className="panelText panelTextDanger">Priorité : {firstBlocking.message}</p>}
+        {firstBlocking && (
+          <p className="panelText panelTextDanger">
+            Priorité : {blockingProductName ? `${blockingProductName} — ` : ''}
+            {firstBlocking.message}
+          </p>
+        )}
       </div>
       {firstBlocking?.action === 'refresh_prices' && (
         <div className="cardActions"><button className="primaryButton" type="button" onClick={onRefresh}>Actualiser les données manquantes</button></div>
       )}
-      {firstBlocking?.action !== 'refresh_prices' && firstBlocking && (
+      {acknowledgeableItemId && (
+        <div className="cardActions">
+          <button className="primaryButton" type="button" onClick={() => onAcknowledgeWarnings(acknowledgeableItemId)}>
+            J’ai vérifié ce produit sur la fiche du magasin
+          </button>
+          <p className="panelText">
+            L’avertissement restera affiché, mais il ne bloquera plus la validation de ce panier.
+          </p>
+        </div>
+      )}
+      {firstBlocking && firstBlocking.action !== 'refresh_prices' && !acknowledgeableItemId && (
         <div className="cardActions"><a className="buttonLink" href="#products-to-validate">Corriger le premier produit</a></div>
       )}
       {report.issues.length > 0 && (
