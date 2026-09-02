@@ -160,6 +160,18 @@ export interface ShoppingListItem {
   // Manual override: use this specific candidate (e.g. an alternate pack
   // size) instead of whichever one the comparison engine would auto-pick.
   forcedCandidateId?: string;
+  // Levée explicite, par l'utilisateur, des deux alertes bloquantes qu'aucune
+  // action automatique ne peut résoudre : « prix incohérent avec le prix au
+  // litre/kilo » et « format à confirmer ». Toutes deux venaient d'un contrôle
+  // volontairement méfiant, sans aucun moyen d'en sortir : un lot mal lu
+  // ("2×500 g" compté 500 g) ou une promotion dont le prix au kilo affiché
+  // porte sur le prix barré suffisait à rendre le panier entier définitivement
+  // non validable — « Actualiser » relisant la même fiche, il retrouvait le
+  // même écart (audit du 02/09, F-01/F-02). L'alerte reste affichée après la
+  // levée, en simple avertissement : on informe toujours, on ne bloque plus
+  // une fois que l'utilisateur a vérifié la fiche de ses yeux. Horodaté pour
+  // que la levée reste traçable dans l'export de preuve.
+  checkedDespiteWarningsAt?: string;
 }
 
 export type ValidatedBasketItem = {

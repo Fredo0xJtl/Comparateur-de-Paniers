@@ -117,6 +117,27 @@ export async function setShoppingListItemCandidateOverride(itemId: string, candi
   await touchList(item.shoppingListId);
 }
 
+// Levée (ou retrait de la levée) des alertes bloquantes « prix incohérent »
+// et « format à confirmer » pour cette ligne — voir
+// ShoppingListItem.checkedDespiteWarningsAt. Même forme que les deux
+// overrides ci-dessus : le champ est retiré de l'enregistrement plutôt que
+// mis à undefined, pour qu'une ligne jamais levée reste identique à ce
+// qu'elle était avant l'ajout de ce champ.
+export async function setShoppingListItemWarningsAcknowledged(itemId: string, acknowledged: boolean) {
+  const item = await db.shoppingListItems.get(itemId);
+  if (!item) {
+    return;
+  }
+
+  if (!acknowledged) {
+    const { checkedDespiteWarningsAt: _removed, ...rest } = item;
+    await db.shoppingListItems.put(rest);
+  } else {
+    await db.shoppingListItems.update(itemId, { checkedDespiteWarningsAt: new Date().toISOString() });
+  }
+  await touchList(item.shoppingListId);
+}
+
 export async function removeShoppingListItem(itemId: string) {
   const item = await db.shoppingListItems.get(itemId);
   if (!item) {
