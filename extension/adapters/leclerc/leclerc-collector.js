@@ -247,6 +247,11 @@ export async function collectLeclercStore({
   // sensiblement le job quand le site est vraiment en difficulté.
   const PRODUCT_TIMEOUT_RETRIES = 1;
   const timeoutRetriesLeft = new Map();
+  // Produits dont le hint de mémoire de recherche a déjà été mis de côté
+  // après un échec (voir le filet de sécurité dans le bloc `if (!best)`) :
+  // leur rejeu repart de la cascade complète, et ne peut pas se rejouer une
+  // seconde fois.
+  const hintDisabledFor = new Set();
   for (let productCursor = 0; productCursor < products.length; productCursor += 1) {
     const product = products[productCursor];
     if (signal.aborted) break;
@@ -387,12 +392,26 @@ export async function collectLeclercStore({
       tabIsOnProductPage = !returned;
     }
 
-    const hintStage = searchHints[product.productId];
-    const hintIndex = hintStage ? SEARCH_STAGE_ORDER.indexOf(hintStage) : 0;
-    const tryName = hintIndex <= 1;
-    const trySimplified = hintIndex <= 2;
-    const tryNameOnly = hintIndex <= 3;
-    const tryBrandOnly = hintIndex <= 4;
+    // Régression silencieuse trouvée à l'audit du 02/09 : ces quatre drapeaux
+    // comparaient `hintIndex` à 1/2/3/4, valeurs calées sur un
+    // SEARCH_STAGE_ORDER qui commençait alors par 'ean' (name valait 1,
+    // simplified_name 2, ...). Depuis le retrait de l'étage EAN mort, 'name'
+    // vaut 0 : tout le mécanisme était décalé d'un cran et ne sautait donc
+    // jamais l'étage qu'il était censé sauter — un produit dont l'étage
+    // gagnant mémorisé était 'simplified_name' rejouait quand même 'name' à
+    // chaque comparatif, et un 'brand_only' rejouait 'name_only'. Soit une
+    // recherche entière perdue par produit et par comparatif, exactement ce
+    // que la mémoire de recherche devait éviter. Comparaison désormais faite
+    // sur la position réelle des étages, sans constante à resynchroniser si
+    // la cascade change encore. Un hint inconnu (ancien 'ean' d'un profil
+    // historique) donne -1 et laisse la cascade complète, comme avant.
+    const hintStage = hintDisabledFor.has(product.productId) ? undefined : searchHints[product.productId];
+    const hintIndex = hintStage ? SEARCH_STAGE_ORDER.indexOf(hintStage) : -1;
+    const isStageAllowed = (stage) => hintIndex < 0 || SEARCH_STAGE_ORDER.indexOf(stage) >= hintIndex;
+    const tryName = isStageAllowed('name');
+    const trySimplified = isStageAllowed('simplified_name');
+    const tryNameOnly = isStageAllowed('name_only');
+    const tryBrandOnly = isStageAllowed('brand_only');
     let matchStage = null;
     // Leclerc n'indexe pas les EAN comme texte : la cascade active commence
     // directement par le nom. Le code-barres extrait d'une carte reste en
@@ -741,6 +760,24 @@ export async function collectLeclercStore({
         // reposer avant le prochain essai.
         if (details?.hasCaptcha) {
           throw new Error('CAPTCHA_DETECTED');
+        }
+        // Filet de sécurité du saut d'étages (02/09) : le hint de mémoire de
+        // recherche a fait démarrer la cascade plus loin que 'name', et aucun
+        // des étages restants n'a rien trouvé. Avant de déclarer le produit
+        // introuvable, on le rejoue UNE fois avec la cascade complète. Sans
+        // ce filet, un étage gagnant devenu obsolète (catalogue du magasin
+        // modifié entre deux comparatifs) transformerait en PRODUCT_NOT_FOUND
+        // un produit qu'un étage antérieur retrouvait encore — puis en « non
+        // trouvé » mémorisé 14 jours côté PWA, donc en produit purement et
+        // simplement sauté aux comparatifs suivants. Même motif de rejeu que
+        // celui des SCRIPT_EXECUTION_TIMEOUT plus bas, et payé uniquement
+        // dans ce cas d'échec : un hint qui fonctionne ne coûte jamais rien.
+        if (hintIndex > 0 && !hintDisabledFor.has(product.productId)) {
+          hintDisabledFor.add(product.productId);
+          debugLog('search_hint_fallback', { product: product.name, hintStage });
+          productIndex -= 1;
+          productCursor -= 1;
+          continue;
         }
         // Aucun candidat n'a franchi le seuil d'acceptation, mais la
         // dernière recherche tentée a peut-être quand même lu des cartes
