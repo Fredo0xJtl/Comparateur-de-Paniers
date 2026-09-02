@@ -1,5 +1,5 @@
 {
-  "name": "Comparateur de Panier",
+  "name": "Comparateur de Paniers",
   "short_name": "Panier",
   "description": "Comparateur local de panier entre drives, sans compte ni automatisation cachée.",
   "start_url": "/",

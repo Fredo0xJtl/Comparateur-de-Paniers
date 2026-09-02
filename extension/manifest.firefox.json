@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Drive Price Splitter Connector",
+  "name": "Comparateur de Paniers — Connecteur Drive",
   "description": "Collecte locale et volontaire des prix affichés par les catalogues Drive sélectionnés.",
-  "version": "0.5.97",
+  "version": "0.5.98",
   "permissions": ["tabs", "storage", "scripting"],
   "host_permissions": [
     "https://*.leclercdrive.fr/*",
