@@ -2,6 +2,7 @@ import {
   type CandidateMatchType,
   type PriceSnapshot,
   type ProductCandidate,
+  type ShoppingListItem,
   type StoreKey
 } from '../../types/domain';
 import { type ShoppingListRow } from '../shopping-list/shoppingListService';
@@ -341,7 +342,7 @@ function selectOptimizedDecision(
         warnings: betterFormatWarning
           ? [...forced.warnings, ...formatMismatchWarnings, betterFormatWarning]
           : [...forced.warnings, ...formatMismatchWarnings],
-        signals: forced.signals,
+        signals: applyWarningAcknowledgement(forced.signals, row.item),
         requiresValidation: false,
         alternates,
         storeCandidateIds
@@ -387,10 +388,13 @@ function selectOptimizedDecision(
       warnings: [...warnings, ...formatMismatchWarnings],
       signals: absenceConfirmed
         ? [{ code: 'CONFIRMED_ABSENT_BOTH', severity: 'warning' }]
-        : uniqueSignals([
-            ...autoEligibleOptions.flatMap((option) => option.signals),
-            { code: 'REQUIRES_VALIDATION', severity: 'blocking' }
-          ]),
+        : applyWarningAcknowledgement(
+            uniqueSignals([
+              ...autoEligibleOptions.flatMap((option) => option.signals),
+              { code: 'REQUIRES_VALIDATION', severity: 'blocking' }
+            ]),
+            row.item
+          ),
       requiresValidation: !absenceConfirmed,
       alternates,
       storeCandidateIds
@@ -1007,6 +1011,31 @@ function chooseBestSingleStore(
 
 function uniqueSignals(signals: ComparisonSignal[]): ComparisonSignal[] {
   return [...new Map(signals.map((signal) => [signal.code, signal])).values()];
+}
+
+// Les deux seules alertes bloquantes qu'aucune action automatique ne peut
+// résoudre : relancer une actualisation relit la même fiche et retrouve le
+// même écart. Sans levée possible, elles rendaient le panier entier
+// définitivement non validable (audit du 02/09, F-01/F-02). Les autres codes
+// bloquants gardent leur blocage : ils ont tous une issue réelle (actualiser
+// un prix absent ou périmé, valider un produit non identifié).
+const ACKNOWLEDGEABLE_SIGNAL_CODES = new Set<ComparisonSignalCode>([
+  'PRICE_MISMATCH',
+  'FORMAT_CONFIRMATION_REQUIRED'
+]);
+
+// Rétrograde en simple avertissement les alertes que l'utilisateur a
+// explicitement levées après vérification sur la fiche du magasin — voir
+// ShoppingListItem.checkedDespiteWarningsAt. L'alerte reste affichée : on
+// informe toujours, on cesse seulement de bloquer.
+function applyWarningAcknowledgement(
+  signals: ComparisonSignal[],
+  item: ShoppingListItem
+): ComparisonSignal[] {
+  if (!item.checkedDespiteWarningsAt) return signals;
+  return signals.map((signal) =>
+    ACKNOWLEDGEABLE_SIGNAL_CODES.has(signal.code) ? { ...signal, severity: 'warning' as const } : signal
+  );
 }
 
 function buildRecommendation(input: {
