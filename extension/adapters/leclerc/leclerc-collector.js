@@ -3044,7 +3044,25 @@ async function waitForProductCandidates({
   // continue quand même à lire les cartes plutôt que de brûler tout le
   // timeout à attendre une confirmation qui ne viendra jamais — mais
   // `routeVerified` reste `false` pour le signaler dans le diagnostic.
-  routeCheckBudgetMs = 4_000
+  routeCheckBudgetMs = 4_000,
+  // Budget accordé APRÈS que la page a commencé à rendre des candidats,
+  // distinct du budget total (02/09). Campagne de mesure sur les 4 étages de
+  // la cascade × 11 produits réels (tools/bench-leclerc-stages.mjs) : sur les
+  // 26 étages qui ont abouti, le candidat finalement retenu était présent dès
+  // la toute première lecture non vide (écart maximal mesuré : 1 ms), et
+  // AUCUN étage n'a jamais abouti après 5,1 s. À l'inverse, les 3 étages les
+  // plus coûteux de la campagne (recherches par marque seule sur "Lipton" et
+  // "HERTA", 22 à 58 résultats annoncés) ont consommé le budget ENTIER : la
+  // page continuait à charger des cartes en lazy-load, donc ni le plateau
+  // (stableRounds) ni "remaining === 0" ne se déclenchaient jamais, alors
+  // qu'aucune de ces cartes n'atteignait le score minimum. Ce budget coupe
+  // exactement cette attente-là — l'attente qui suit une page ayant DÉJÀ
+  // répondu — sans toucher au cas qu'il ne faut surtout pas casser : une page
+  // lente à démarrer garde ses 15 s complètes pour rendre son premier
+  // résultat. Calibré à 4 s (soit 2 à 3 tours de boucle supplémentaires au
+  // rythme observé) pour couvrir avec marge le cas "Orangensaft/Tropicana"
+  // documenté plus bas, où le bon produit n'est apparu qu'au tour suivant.
+  candidateSettleBudgetMs = 4_000
 }) {
   // 15s: reduced from 22s after fixing card matching logic (2026-07-29).
   // DataDome's bot-check adds variable delay, but improved matching means
@@ -3129,6 +3147,9 @@ async function waitForProductCandidates({
   // était systématiquement parmi les 3 placeholders qui restaient à charger.
   let stableRounds = 0;
   let bestCandidatesSoFar = null;
+  // Échéance dérivée de candidateSettleBudgetMs, armée à la première lecture
+  // non vide seulement (voir le commentaire de ce paramètre).
+  let settleDeadline = null;
   let accumulatedCandidates = [];
   const mergeCandidates = (newCandidates) => {
     accumulatedCandidates = mergeLeclercCandidateSnapshots(accumulatedCandidates, newCandidates);
@@ -3189,6 +3210,9 @@ async function waitForProductCandidates({
       if (Array.isArray(candidatesThisRound) && candidatesThisRound.length > 0) {
         const candidates = mergeCandidates(candidatesThisRound);
         bestCandidatesSoFar = candidates;
+        if (settleDeadline === null) {
+          settleDeadline = Math.min(deadline, Date.now() + candidateSettleBudgetMs);
+        }
         // `remaining === 0` reste un signal de retour rapide fiable pour le
         // cas courant (liste courte, pas de virtualisation en jeu) — mais
         // n'est PAS garanti d'être atteint sur une liste longue virtualisée
@@ -3219,6 +3243,9 @@ async function waitForProductCandidates({
         // bonne partie du gain de fréquence de lecture. 200ms reste le même
         // ordre de grandeur que le délai de settling déjà utilisé entre
         // paliers de scroll interne (voir plus bas).
+        if (Date.now() >= settleDeadline) {
+          return { candidates, routeVerified, diag: { roundCount, routeCheckElapsedMs, elapsedMs: Date.now() - startedAt, lastRemainingPlaceholders, routeVerified, exitReason: 'settle_budget_exhausted' } };
+        }
         await wait(200, signal);
         continue;
       }
