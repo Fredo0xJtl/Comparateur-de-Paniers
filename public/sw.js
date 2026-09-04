@@ -1,4 +1,4 @@
-const CACHE_NAME = 'drive-price-splitter-static-v2';
+const CACHE_NAME = 'drive-price-splitter-static-v3';
 const STATIC_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

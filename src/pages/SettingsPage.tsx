@@ -11,7 +11,7 @@ import {
   type LocalBackupSummary
 } from '../features/backup/backupService';
 import { clearDriveSearchMemory } from '../features/drive-bridge/driveRefreshService';
-import { getSettings, updateSettings } from '../features/settings/settingsService';
+import { applyTheme, getSettings, updateSettings } from '../features/settings/settingsService';
 import { type UserSettings } from '../types/domain';
 
 const MAX_BACKUP_FILE_BYTES = 2 * 1024 * 1024;
@@ -132,6 +132,29 @@ export function SettingsPage() {
     }
   }
 
+  async function handleThemeChange(theme: NonNullable<UserSettings['theme']>) {
+    applyTheme(theme); // effet immédiat, avant même la confirmation d'écriture
+    setSettingsStatus('loading');
+    try {
+      const nextSettings = await updateSettings({ theme });
+      setSettings(nextSettings);
+      setSettingsStatus('ready');
+    } catch {
+      setSettingsStatus('error');
+    }
+  }
+
+  async function handleOpenFoodFactsNameSearchChange(enabled: boolean) {
+    setSettingsStatus('loading');
+    try {
+      const nextSettings = await updateSettings({ openFoodFactsNameSearch: enabled });
+      setSettings(nextSettings);
+      setSettingsStatus('ready');
+    } catch {
+      setSettingsStatus('error');
+    }
+  }
+
   async function handlePrepareExportBackup() {
     setBackupStatus('working');
     setBackupMessage('');
@@ -222,93 +245,28 @@ export function SettingsPage() {
 
   return (
     <section className="pageStack" aria-labelledby="settings-title">
-      <div>
-        <p className="eyebrow">Paramètres</p>
-          <h2 id="settings-title">Préférences locales</h2>
+      <div className="pageTitle">
+        <h2 id="settings-title">Préférences locales</h2>
           <p className="lead">
           Gérez le seuil d’économie, les données locales, la mémoire Drive et les options avancées.
         </p>
       </div>
 
-      <div className="settingsPanel">
-        <div>
-          <h3>Données de démonstration</h3>
-          <p>Réinitialise les produits mockés stockés localement dans IndexedDB.</p>
-        </div>
-        <button className="primaryButton" type="button" onClick={handleResetDemoData}>
-          {status === 'saving' ? 'Réinitialisation...' : 'Réinitialiser'}
-        </button>
-        {status === 'saved' && <p className="panelText">Données de démonstration réinitialisées.</p>}
-        {status === 'error' && (
-          <p className="panelText panelTextDanger">La réinitialisation locale a échoué.</p>
-        )}
-      </div>
-
-      <div className="settingsPanel">
-        <div>
-          <h3>Réinitialisation « paramètres d'usine »</h3>
-          <p>
-            Supprime définitivement TOUTES les données locales (produits, magasins, prix, listes,
-            paniers validés, réglages) — rien n'est remis à la place, contrairement à « Réinitialiser »
-            ci-dessus. Aucun export automatique n'est fait avant : télécharge une sauvegarde JSON si tu
-            veux la garder. Action irréversible, sans upload.
-          </p>
-        </div>
-        {!pendingWipeConfirm ? (
-          <button
-            className="dangerButton"
-            type="button"
-            onClick={() => setPendingWipeConfirm(true)}
-            disabled={wipeStatus === 'working'}
-          >
-            Tout effacer (usine)
-          </button>
-        ) : (
-          <div className="confirmPanel">
-            <p>Vraiment tout effacer ? Cette action est irréversible et ne peut pas être annulée.</p>
-            <button className="dangerButton" type="button" onClick={() => void handleWipeAllData()}>
-              {wipeStatus === 'working' ? 'Effacement...' : 'Oui, tout effacer'}
-            </button>
-            <button
-              className="secondaryButton"
-              type="button"
-              onClick={() => setPendingWipeConfirm(false)}
-              disabled={wipeStatus === 'working'}
-            >
-              Annuler
-            </button>
+      {import.meta.env.DEV && (
+        <div className="settingsPanel">
+          <div>
+            <h3>Données de démonstration (dev)</h3>
+            <p>Réinitialise les produits mockés stockés localement dans IndexedDB.</p>
           </div>
-        )}
-        {wipeStatus === 'done' && (
-          <p className="panelText">
-            Toutes les données locales ont été effacées. Note : certaines pages réamorcent
-            automatiquement des données de démonstration à la prochaine navigation si leur table est
-            vide (comportement existant, indépendant de ce bouton).
-          </p>
-        )}
-        {wipeStatus === 'error' && (
-          <p className="panelText panelTextDanger">L'effacement complet a échoué.</p>
-        )}
-      </div>
-
-      <div className="settingsPanel">
-        <div>
-          <h3>Mémoire de recherche Drive</h3>
-          <p>
-            L’extension retient 14 jours les produits jugés « introuvables » chez un magasin, pour ne
-            pas relancer une recherche vouée à l’échec à chaque rafraîchissement. Vider cette mémoire
-            force une nouvelle recherche pour tous les produits au prochain rafraîchissement — utile si
-            un produit a été écarté à tort (bug corrigé, faux négatif).
-          </p>
+          <button className="primaryButton" type="button" onClick={handleResetDemoData}>
+            {status === 'saving' ? 'Réinitialisation...' : 'Réinitialiser'}
+          </button>
+          {status === 'saved' && <p className="panelText">Données de démonstration réinitialisées.</p>}
+          {status === 'error' && (
+            <p className="panelText panelTextDanger">La réinitialisation locale a échoué.</p>
+          )}
         </div>
-        <button className="primaryButton" type="button" onClick={() => void handleClearSearchMemory()}>
-          {searchMemoryStatus === 'saving' ? 'Vidage...' : 'Vider la mémoire de recherche'}
-        </button>
-        {searchMemoryStatus === 'saved' && <p className="panelText">Mémoire de recherche vidée.</p>}
-        {searchMemoryStatus === 'error' && (
-          <p className="panelText panelTextDanger">Le vidage de la mémoire de recherche a échoué.</p>
-        )}
-      </div>
+      )}
 
       <div className="settingsPanel">
         <div>
@@ -324,6 +282,26 @@ export function SettingsPage() {
         )}
         {settings && (
           <>
+            <fieldset className="checkboxGroup">
+              <legend>Apparence</legend>
+              {(
+                [
+                  { value: 'system', label: 'Suivre le téléphone' },
+                  { value: 'light', label: 'Clair' },
+                  { value: 'dark', label: 'Sombre' }
+                ] as const
+              ).map((option) => (
+                <label className="checkboxLabel" key={option.value}>
+                  <input
+                    type="radio"
+                    name="theme"
+                    checked={(settings.theme ?? 'system') === option.value}
+                    onChange={() => void handleThemeChange(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </fieldset>
             <label className="checkboxLabel">
               <input
                 id="experimental-add-to-cart"
@@ -340,6 +318,25 @@ export function SettingsPage() {
               Affiche aussi les liens directs. Le bouton de validation peut demander à l’extension de
               remplir le panier après ton accord ; vérifie toujours prix, quantités et substitutions sur
               le site officiel avant toute commande.
+            </p>
+            <label className="checkboxLabel">
+              <input
+                id="open-food-facts-name-search"
+                name="openFoodFactsNameSearch"
+                checked={settings.openFoodFactsNameSearch === true}
+                type="checkbox"
+                onChange={(event) =>
+                  void handleOpenFoodFactsNameSearchChange(event.currentTarget.checked)
+                }
+              />
+              <span>Chercher la fiche produit par son nom (Open Food Facts)</span>
+            </label>
+            <p className="panelText">
+              Ajoute un bouton dans l’écran d’ajout pour retrouver la marque, le format et surtout
+              le code-barres d’un produit tapé au clavier — c’est le code-barres qui permet ensuite
+              d’identifier la bonne fiche en magasin sans validation manuelle. Sans cette option,
+              rien de ce que tu tapes ne quitte l’appareil ; avec elle, les mots tapés sont envoyés
+              à Open Food Facts, mais seulement quand tu touches ce bouton.
             </p>
           </>
         )}
@@ -447,6 +444,78 @@ export function SettingsPage() {
               Annuler
             </button>
           </div>
+        )}
+      </div>
+
+      <div className="settingsPanel">
+        <div>
+          <h3>Mémoire de recherche Drive</h3>
+          <p>
+            L’extension retient 3 jours les produits jugés « introuvables » chez un magasin, pour ne
+            pas relancer une recherche vouée à l’échec à chaque rafraîchissement. Vider cette mémoire
+            force une nouvelle recherche pour tous les produits au prochain rafraîchissement — utile si
+            un produit a été écarté à tort (bug corrigé, faux négatif).
+          </p>
+        </div>
+        <button className="primaryButton" type="button" onClick={() => void handleClearSearchMemory()}>
+          {searchMemoryStatus === 'saving' ? 'Vidage...' : 'Vider la mémoire de recherche'}
+        </button>
+        {searchMemoryStatus === 'saved' && <p className="panelText">Mémoire de recherche vidée.</p>}
+        {searchMemoryStatus === 'error' && (
+          <p className="panelText panelTextDanger">Le vidage de la mémoire de recherche a échoué.</p>
+        )}
+      </div>
+
+      {/* Volontairement en tout dernier de la page : la seule action
+          irréversible et destructive de tous les réglages. Jusqu'ici affichée
+          en 2e position, avant même les réglages courants — un nouvel
+          utilisateur ouvrant Réglages tombait d'abord sur un gros bouton
+          rouge "Tout effacer" (retour explicite du 04/09, audit visuel
+          mobile avant release publique). */}
+      <div className="settingsPanel">
+        <div>
+          <h3>Réinitialisation « paramètres d'usine »</h3>
+          <p>
+            Supprime définitivement TOUTES les données locales (produits, magasins, prix, listes,
+            paniers validés, réglages) — rien n'est remis à la place, contrairement à « Réinitialiser »
+            ci-dessus. Aucun export automatique n'est fait avant : télécharge une sauvegarde JSON si tu
+            veux la garder. Action irréversible, sans upload.
+          </p>
+        </div>
+        {!pendingWipeConfirm ? (
+          <button
+            className="dangerButton"
+            type="button"
+            onClick={() => setPendingWipeConfirm(true)}
+            disabled={wipeStatus === 'working'}
+          >
+            Tout effacer (usine)
+          </button>
+        ) : (
+          <div className="confirmPanel">
+            <p>Vraiment tout effacer ? Cette action est irréversible et ne peut pas être annulée.</p>
+            <button className="dangerButton" type="button" onClick={() => void handleWipeAllData()}>
+              {wipeStatus === 'working' ? 'Effacement...' : 'Oui, tout effacer'}
+            </button>
+            <button
+              className="secondaryButton"
+              type="button"
+              onClick={() => setPendingWipeConfirm(false)}
+              disabled={wipeStatus === 'working'}
+            >
+              Annuler
+            </button>
+          </div>
+        )}
+        {wipeStatus === 'done' && (
+          <p className="panelText">
+            Toutes les données locales ont été effacées. Note : certaines pages réamorcent
+            automatiquement des données de démonstration à la prochaine navigation si leur table est
+            vide (comportement existant, indépendant de ce bouton).
+          </p>
+        )}
+        {wipeStatus === 'error' && (
+          <p className="panelText panelTextDanger">L'effacement complet a échoué.</p>
         )}
       </div>
     </section>

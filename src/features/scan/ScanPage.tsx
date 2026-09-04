@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listProducts } from '../../db/seed';
-import { createProduct, emptyProductForm, markProductUsed } from '../products/productService';
+import {
+  createProduct,
+  emptyProductForm,
+  markProductUsed,
+  type ProductFormErrors,
+  type ProductFormValues
+} from '../products/productService';
+import { ProductForm } from '../products/ProductForm';
+import { searchProducts } from '../products/productSearch';
+import {
+  adoptStorePick,
+  confirmProductFromText,
+  createProductFromText,
+  discardProductFromText
+} from '../products/quickAddService';
 import { addProductToActiveList } from '../shopping-list/shoppingListService';
-import { type Product } from '../../types/domain';
+import { runLivePick } from '../drive-bridge/driveRefreshService';
+import { listSelectedStores } from '../stores/storeLocatorService';
+import { storeLabels } from '../stores/storeLabels';
+import { type Product, type StoreKey } from '../../types/domain';
 import {
   applyContinuousAutofocus,
   createBarcodeDetector,
@@ -18,7 +35,13 @@ import {
   addToScannedHistory,
   getScannedHistory
 } from './barcodeScanner';
-import { lookupOpenFoodFactsProduct, type OpenFoodFactsProduct } from './openFoodFactsClient';
+import {
+  lookupOpenFoodFactsProduct,
+  searchOpenFoodFactsProducts,
+  type OpenFoodFactsProduct,
+  type OpenFoodFactsSuggestion
+} from './openFoodFactsClient';
+import { getSettings } from '../settings/settingsService';
 import {
   getCachedProduct,
   setCachedProduct,
@@ -26,18 +49,8 @@ import {
   type CacheSource
 } from './productCacheService';
 
-// Purely informational (resolution actually negotiated). NOT a reliable
-// signal for whether autofocus is working: GeckoView (Firefox Android) is
-// documented (docs/RAPPORT_FIX_SCAN_CAMERA.md) to not always report
-// focusMode via getCapabilities() even when applyConstraints() honors it at
-// runtime — so this line reading "aucun (non exposé)" does NOT mean the
-// applyContinuousAutofocus() call actually failed.
-function describeTrackDiagnostic(track: MediaStreamTrack): string {
-  const settings = track.getSettings();
-  const capabilities = (track.getCapabilities?.() as (MediaTrackCapabilities & { focusMode?: string[] }) | undefined) ?? {};
-  const resolution = settings.width && settings.height ? `${settings.width}x${settings.height}` : 'inconnue';
-  const focusSupport = capabilities.focusMode?.length ? capabilities.focusMode.join(', ') : 'non rapporté par le navigateur (peu fiable, voir commentaire)';
-  return `Résolution obtenue : ${resolution} · Focus déclaré par le navigateur : ${focusSupport}`;
+function formatEuro(value: number) {
+  return `${value.toFixed(2).replace('.', ',')} €`;
 }
 
 type ScanStatus = 'idle' | 'unsupported' | 'camera' | 'error';
@@ -47,6 +60,13 @@ type ScanStatus = 'idle' | 'unsupported' | 'camera' | 'error';
 type OffLookupStatus = 'idle' | 'loading' | 'not_found';
 
 export function ScanPage() {
+  // Recherche par nom : premier des trois chemins d'ajout de cet écran
+  // (nom → magasin → code-barres). Elle ne consulte que la base locale, donc
+  // aucun mot tapé ne quitte l'appareil (voir productSearch.ts).
+  const [nameQuery, setNameQuery] = useState('');
+  const [knownProducts, setKnownProducts] = useState<Product[]>([]);
+  const [configuredStores, setConfiguredStores] = useState<StoreKey[]>([]);
+  const [storeSearchBusy, setStoreSearchBusy] = useState<StoreKey | null>(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [foundProduct, setFoundProduct] = useState<Product | null>(null);
@@ -56,7 +76,6 @@ export function ScanPage() {
   const [offLookupStatus, setOffLookupStatus] = useState<OffLookupStatus>('idle');
   const [cameraOptions, setCameraOptions] = useState<CameraDeviceOption[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
-  const [cameraDiagnostic, setCameraDiagnostic] = useState('');
   const [cameraBusy, setCameraBusy] = useState(false);
   const [brightness, setBrightness] = useState(0);
   const [contrast, setContrast] = useState(100);
@@ -64,6 +83,12 @@ export function ScanPage() {
   const [cacheSource, setCacheSource] = useState<CacheSource | null>(null);
   const [cacheAge, setCacheAge] = useState<string>('');
   const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [offSearchEnabled, setOffSearchEnabled] = useState(false);
+  const [offSuggestions, setOffSuggestions] = useState<OpenFoodFactsSuggestion[]>([]);
+  const [offSearchStatus, setOffSearchStatus] = useState<'idle' | 'searching' | 'done'>('idle');
+  const [manualFormOpen, setManualFormOpen] = useState(false);
+  const [manualValues, setManualValues] = useState<ProductFormValues>(emptyProductForm);
+  const [manualErrors, setManualErrors] = useState<ProductFormErrors>({});
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
@@ -78,6 +103,164 @@ export function ScanPage() {
   const detectorRef = useRef<ReturnType<typeof createBarcodeDetector>>(null);
 
   useEffect(() => stopCamera, []);
+
+  useEffect(() => {
+    void refreshKnownProducts();
+    // Magasins réellement configurés dans les réglages : proposer « Chercher
+    // chez Hyper U » alors qu'aucun magasin U n'est enregistré n'amènerait
+    // que sur un échec quelques secondes plus tard.
+    void listSelectedStores()
+      .then((stores) => setConfiguredStores(stores.map((store) => store.storeKey)))
+      .catch(() => setConfiguredStores([]));
+    // Recherche Open Food Facts par nom : désactivée tant que l'utilisateur
+    // ne l'a pas explicitement autorisée dans les réglages, le bouton n'étant
+    // même pas affiché sinon.
+    void getSettings()
+      .then((settings) => setOffSearchEnabled(settings.openFoodFactsNameSearch === true))
+      .catch(() => setOffSearchEnabled(false));
+  }, []);
+
+  async function refreshKnownProducts() {
+    try {
+      setKnownProducts(await listProducts());
+    } catch {
+      setKnownProducts([]);
+    }
+  }
+
+  // Produit déjà connu : rien à créer, il rejoint simplement la liste active.
+  async function handleAddKnownProduct(product: Product) {
+    await addProductToActiveList(product.id);
+    await markProductUsed(product);
+    setNameQuery('');
+    setFoundProduct(product);
+    setMessage(`✓ ${product.name} ajouté à la liste active.`);
+    await refreshKnownProducts();
+  }
+
+  // Dernier recours, quand aucun des chemins précédents n'aboutit : produit
+  // vendu en vrac, absent des deux catalogues, ou connecteur indisponible.
+  // Ce formulaire complet vivait sur la page Produits, qui offrait donc un
+  // second écran d'ajout concurrent ; il est ici pour que l'ajout d'un
+  // produit se fasse toujours au même endroit. Le nom déjà tapé est repris
+  // pour ne pas le ressaisir.
+  function openManualForm() {
+    setManualValues({ ...emptyProductForm, name: nameQuery.trim() });
+    setManualErrors({});
+    setManualFormOpen(true);
+  }
+
+  // Contrairement à la recherche en magasin, rien n'est ambigu ici : c'est
+  // l'utilisateur lui-même qui décrit le produit. Il rejoint donc la liste
+  // directement, comme un produit scanné.
+  async function handleCreateManualProduct() {
+    const result = await createProduct(manualValues);
+    setManualErrors(result.errors);
+    if (!result.isValid || !result.product) {
+      return;
+    }
+    await addProductToActiveList(result.product.id);
+    await markProductUsed(result.product);
+    setManualFormOpen(false);
+    setManualValues(emptyProductForm);
+    setNameQuery('');
+    setFoundProduct(result.product);
+    setMessage(`✓ ${result.product.name} créé et ajouté à ta liste.`);
+    await refreshKnownProducts();
+  }
+
+  // Les mots tapés ne partent chez Open Food Facts que sur ce geste
+  // explicite : la frappe elle-même reste locale. Le but n'est pas de
+  // remplacer la recherche en magasin — Open Food Facts ne connaît aucun
+  // catalogue de drive, ni aucun prix — mais de récupérer le CODE-BARRES du
+  // produit. C'est lui, ensuite, qui permet de confirmer avec certitude la
+  // fiche trouvée chez Leclerc ou Hyper U, là où un simple nom ne donne
+  // jamais qu'une « correspondance probable » à valider à la main.
+  async function handleSearchOpenFoodFacts() {
+    const query = nameQuery.trim();
+    if (!query || offSearchStatus === 'searching') {
+      return;
+    }
+    setOffSearchStatus('searching');
+    setMessage('');
+    try {
+      setOffSuggestions(await searchOpenFoodFactsProducts(query));
+    } finally {
+      setOffSearchStatus('done');
+    }
+  }
+
+  // Une proposition retenue vaut exactement un scan de ce code-barres : on
+  // repasse donc par handleBarcode plutôt que de recréer un produit ici.
+  // Ce chemin sait déjà reconnaître un produit déjà présent en base (pas de
+  // doublon), alimenter le cache et ajouter à la liste active.
+  async function handleAdoptOffSuggestion(suggestion: OpenFoodFactsSuggestion) {
+    setOffSuggestions([]);
+    setOffSearchStatus('idle');
+    setNameQuery('');
+    await handleBarcode(suggestion.barcode);
+    await refreshKnownProducts();
+  }
+
+  // Produit absent de la base : on le crée avec les mots tapés, puis on ouvre
+  // le magasin sur cette recherche. L'utilisateur navigue librement et valide
+  // la bonne fiche avec le bouton flottant du site ; on adopte alors le nom et
+  // le format du catalogue, bien plus fiables que ce qu'il aurait saisi.
+  //
+  // Le produit est créé AVANT la sélection (runLivePick a besoin d'un
+  // identifiant), mais il ne rejoint la liste QU'APRÈS validation d'une fiche.
+  // Signalé le 03/09 : un produit tapé à la main était ajouté à la liste
+  // immédiatement et y restait même quand aucune fiche n'était validée — donc
+  // sans prix ni format, donc inutile au comparatif et à retirer à la main.
+  async function handleSearchInStore(storeKey: StoreKey) {
+    const query = nameQuery.trim();
+    if (!query || storeSearchBusy) {
+      return;
+    }
+    setStoreSearchBusy(storeKey);
+    setFoundProduct(null);
+    setMissingBarcode('');
+    setMessage(
+      `Ouverture de ${storeLabels[storeKey]}… Cherche le produit sur le site, ouvre sa fiche, puis touche « ✓ Valider ce produit ».`
+    );
+    try {
+      const product = await createProductFromText(query);
+      if (!product) {
+        setMessage('Nom de produit vide ou invalide.');
+        return;
+      }
+      const outcome = await runLivePick(
+        product.id,
+        product.name,
+        undefined,
+        storeKey,
+        undefined,
+        undefined,
+        query
+      );
+      if (outcome.ok) {
+        const updated = await adoptStorePick(product, outcome);
+        await confirmProductFromText(updated);
+        setNameQuery('');
+        setFoundProduct(updated);
+        setMessage(
+          `✓ ${updated.name} ajouté à ta liste, validé chez ${storeLabels[storeKey]} à ${formatEuro(outcome.priceEuro)}.`
+        );
+      } else {
+        // Rien n'a été validé : on ne laisse ni ligne de liste ni produit
+        // orphelin derrière. L'utilisateur garde sa recherche à l'écran pour
+        // réessayer, éventuellement dans l'autre magasin.
+        await discardProductFromText(product);
+        setFoundProduct(null);
+        setMessage(
+          `Aucune fiche validée chez ${storeLabels[storeKey]} (${outcome.reason}). « ${query} » n'a pas été ajouté à ta liste — réessaie, ou cherche dans l'autre magasin.`
+        );
+      }
+      await refreshKnownProducts();
+    } finally {
+      setStoreSearchBusy(null);
+    }
+  }
 
   useEffect(() => {
     if (scanStatus !== 'camera' || !videoRef.current || !streamRef.current) {
@@ -325,7 +508,6 @@ export function ScanPage() {
     const track = stream.getVideoTracks()[0];
     if (track) {
       await applyContinuousAutofocus(track);
-      setCameraDiagnostic(describeTrackDiagnostic(track));
     }
     return stream;
   }
@@ -382,7 +564,6 @@ export function ScanPage() {
         const track = stream.getVideoTracks()[0];
         if (track) {
           await applyContinuousAutofocus(track);
-          setCameraDiagnostic(describeTrackDiagnostic(track));
         }
       } else {
         probeStream.getTracks().forEach((track) => track.stop());
@@ -476,12 +657,166 @@ export function ScanPage() {
     }
     setCameraOptions([]);
     setSelectedCameraId(null);
-    setCameraDiagnostic('');
     setScanStatus((current) => (current === 'camera' ? 'idle' : current));
   }
 
+  const suggestions = searchProducts(knownProducts, nameQuery);
+  const trimmedQuery = nameQuery.trim();
+
   return (
     <section className="pageStack scanPageLayout" aria-labelledby="scan-title">
+      <div className="settingsPanel">
+        <h3>Ajouter par son nom</h3>
+        <label className="quickAddField">
+          <span>Nom du produit</span>
+          <input
+            id="quick-add-name"
+            name="quickAddName"
+            type="search"
+            autoComplete="off"
+            placeholder="beurre demi-sel"
+            value={nameQuery}
+            onChange={(event) => {
+              setNameQuery(event.target.value);
+              // Les propositions portent sur la recherche précédente : les
+              // garder à l'écran ferait choisir une fiche sans rapport.
+              setOffSuggestions([]);
+              setOffSearchStatus('idle');
+            }}
+          />
+        </label>
+
+        {suggestions.length > 0 && (
+          <ul className="quickAddResults" aria-label="Produits déjà connus">
+            {suggestions.map(({ product }) => (
+              <li key={product.id}>
+                <button
+                  className="secondaryButton"
+                  type="button"
+                  disabled={storeSearchBusy !== null}
+                  onClick={() => void handleAddKnownProduct(product)}
+                >
+                  <span>{product.name}</span>
+                  {product.brand && <small> · {product.brand}</small>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {trimmedQuery.length > 0 && offSearchEnabled && (
+          <div className="quickAddStores">
+            <p className="panelText">
+              Tu peux d'abord retrouver la fiche officielle du produit (marque, format et
+              code-barres). Avec son code-barres, le magasin est ensuite identifié avec
+              certitude, sans validation à faire à la main.
+            </p>
+            <button
+              className="secondaryButton"
+              type="button"
+              disabled={offSearchStatus === 'searching' || barcodeBusy || storeSearchBusy !== null}
+              onClick={() => void handleSearchOpenFoodFacts()}
+            >
+              {offSearchStatus === 'searching'
+                ? 'Recherche de la fiche…'
+                : 'Trouver la fiche produit'}
+            </button>
+            {offSearchStatus === 'done' && offSuggestions.length === 0 && (
+              <p className="panelText">
+                Aucune fiche trouvée pour « {trimmedQuery} ». Cherche directement dans un magasin.
+              </p>
+            )}
+            {offSuggestions.length > 0 && (
+              <>
+                <ul className="quickAddResults" aria-label="Fiches produit trouvées">
+                  {offSuggestions.map((suggestion) => (
+                    <li key={suggestion.barcode}>
+                      <button
+                        className="secondaryButton"
+                        type="button"
+                        disabled={barcodeBusy || storeSearchBusy !== null}
+                        onClick={() => void handleAdoptOffSuggestion(suggestion)}
+                      >
+                        <span>{suggestion.name}</span>
+                        {suggestion.brand && <small> · {suggestion.brand}</small>}
+                        {suggestion.baseQuantity !== undefined && suggestion.baseUnit && (
+                          <small>
+                            {' · '}
+                            {suggestion.baseQuantity} {suggestion.baseUnit}
+                          </small>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="panelText">
+                  Ces fiches viennent d'une base mondiale : vérifie la marque et le format avant
+                  d'en choisir une. Aucune n'est retenue automatiquement.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {trimmedQuery.length > 0 && (
+          <div className="quickAddStores">
+            <p className="panelText">
+              {suggestions.length === 0
+                ? "Pas encore dans ta base. Cherche-le directement dans un magasin :"
+                : 'Aucun de ceux-ci ? Cherche dans un magasin :'}
+            </p>
+            {configuredStores.length === 0 ? (
+              <p className="panelText">
+                Aucun magasin configuré pour l'instant — ajoute-en un dans les réglages pour
+                pouvoir chercher dans un catalogue.
+              </p>
+            ) : (
+              configuredStores.map((storeKey) => (
+                <button
+                  key={storeKey}
+                  className="secondaryButton"
+                  type="button"
+                  disabled={storeSearchBusy !== null}
+                  onClick={() => void handleSearchInStore(storeKey)}
+                >
+                  {storeSearchBusy === storeKey
+                    ? `Ouverture de ${storeLabels[storeKey]}…`
+                    : `Chercher chez ${storeLabels[storeKey]}`}
+                </button>
+              ))
+            )}
+            {!manualFormOpen && (
+              <button className="secondaryButton" type="button" onClick={openManualForm}>
+                Créer la fiche à la main
+              </button>
+            )}
+          </div>
+        )}
+
+        {manualFormOpen && (
+          <div className="quickAddStores">
+            <h4>Créer la fiche à la main</h4>
+            <p className="panelText">
+              À utiliser quand le produit n'existe dans aucun des deux catalogues, ou qu'il se
+              vend en vrac. Le nom suffit ; la marque et le format aident le comparatif à
+              retrouver le même produit dans les deux magasins.
+            </p>
+            <ProductForm
+              values={manualValues}
+              errors={manualErrors}
+              idPrefix="scan-manual-product"
+              submitLabel="Créer et ajouter à ma liste"
+              onChange={setManualValues}
+              onSubmit={() => void handleCreateManualProduct()}
+              onCancel={() => {
+                setManualFormOpen(false);
+                setManualErrors({});
+              }}
+            />
+          </div>
+        )}
+      </div>
+
       <div className="settingsPanel">
         <button className="primaryButton" type="button" onClick={startScan} disabled={cameraBusy}>
           Scanner un produit
@@ -555,7 +890,7 @@ export function ScanPage() {
         }}
       >
         <label>
-          <span>Saisie manuelle</span>
+          <span>Code-barres saisi à la main</span>
           <input
             id="manual-barcode"
             name="barcode"

@@ -75,3 +75,27 @@ describe('dedupeBrandFromSearchName', () => {
     expect(dedupeBrandFromSearchName('Boisson végétale saveur amande', 'U')).toBe('U');
   });
 });
+
+// Mesuré sur le vrai site le 02/09 : l'étape « nom simplifié » du jambon
+// HERTA partait avec la requête « HERTA LE BON PARIS Jambon sel réduit sans
+// nitrite x6- ». Le poids collé au multiplicateur ("x6-210g") était bien
+// retiré, mais ni le multiplicateur écrit « x6 » (les règles existantes ne
+// couvraient que « 6x ») ni le tiret devenu orphelin — faute d'espace des
+// deux côtés, le découpage par segments ne le voyait pas.
+describe('stripPackagingNoiseFromSearchName — conditionnement collé au poids', () => {
+  it('retire le multiplicateur écrit "xN" et le tiret qu\'il laisse derrière lui', () => {
+    expect(stripPackagingNoiseFromSearchName('HERTA LE BON PARIS Jambon sel réduit sans nitrite x6-210g')).toBe(
+      'HERTA LE BON PARIS Jambon sel réduit sans nitrite'
+    );
+    expect(stripPackagingNoiseFromSearchName('Yaourt nature x4 125g')).toBe('Yaourt nature');
+    expect(stripPackagingNoiseFromSearchName('Compote x12')).toBe('Compote');
+  });
+
+  it('laisse intact un nom où le "x" ou le chiffre appartient au produit', () => {
+    // Le `\b` de la règle interdit de matcher au milieu d'un mot : sans lui,
+    // "Box 4" perdrait son "x 4".
+    expect(stripPackagingNoiseFromSearchName('Box 4 saveurs')).toBe('Box 4 saveurs');
+    expect(stripPackagingNoiseFromSearchName('Boîte de 12 œufs')).toBe('Boîte de 12 œufs');
+    expect(stripPackagingNoiseFromSearchName('Coca-Cola zéro')).toBe('Coca-Cola zéro');
+  });
+});

@@ -1,9 +1,11 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { appRoutes } from './navigation';
 import { ErrorBoundary } from './ErrorBoundary';
 import { lazyRoute } from './lazyRoute';
+import { useSwipeNavigation } from './useSwipeNavigation';
 import { HomePage } from '../pages/HomePage';
+import { applyTheme, getSettings } from '../features/settings/settingsService';
 
 // Chargées à la demande : le scanner tire @zxing/library (la plus grosse
 // dépendance de l'app, inutile tant qu'on n'ouvre pas la caméra) et chaque
@@ -19,12 +21,27 @@ const SettingsPage = lazyRoute(() => import('../pages/SettingsPage'), 'SettingsP
 
 export function App() {
   const location = useLocation();
+  const { onTouchStart, onTouchEnd } = useSwipeNavigation(location.pathname);
+
+  useEffect(() => {
+    // Applique le thème enregistré dès le premier rendu ; un léger flash au
+    // thème système par défaut est possible le temps de lire IndexedDB (async),
+    // sans conséquence pratique (réglage qui change rarement, app déjà en cache).
+    void getSettings().then((settings) => applyTheme(settings.theme));
+  }, []);
 
   return (
     <div className="appShell">
       <header className="appHeader">
-        <p className="appKicker">Comparateur de Paniers</p>
-        <h1>Comparer les prix, puis remplir le panier avec votre accord</h1>
+        <div className="appHeaderBrand">
+          <img className="appLogo" src="/icon.svg" alt="" />
+          <div>
+            <h1>Comparateur de Paniers</h1>
+            <p className="appTagline">
+              Comparez les prix entre drive, validez, puis remplissez votre panier automatiquement.
+            </p>
+          </div>
+        </div>
       </header>
 
       <nav className="topNav" aria-label="Navigation principale">
@@ -40,7 +57,7 @@ export function App() {
         ))}
       </nav>
 
-      <main className="appMain">
+      <main className="appMain" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {/* La barrière est placée à l'intérieur du shell : une page qui casse
             laisse la navigation utilisable, au lieu de faire disparaître
             l'application entière. La clé sur le chemin courant la réarme à

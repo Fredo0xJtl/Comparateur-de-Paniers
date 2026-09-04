@@ -38,7 +38,7 @@ export function HomePage() {
 
   return (
     <section className="pageStack" aria-labelledby="home-title">
-      <div>
+      <div className="pageTitle">
         <h2 id="home-title">Panier optimisé Hyper U / Leclerc</h2>
       </div>
 

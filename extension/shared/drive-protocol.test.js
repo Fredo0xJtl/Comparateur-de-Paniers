@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateDriveObservation } from './drive-protocol.js';
+import { validateDriveLivePickJob, validateDriveObservation } from './drive-protocol.js';
 
 const baseObservation = {
   protocolVersion: 1,
@@ -23,5 +23,36 @@ describe('miroir extension du protocole — unité du prix unitaire', () => {
     expect(() => validateDriveObservation({ ...baseObservation, unitPriceEuro: 0.99, unitPriceUnit: 'ml' })).toThrow(
       'Observation Drive invalide'
     );
+  });
+});
+
+// Requête tapée par l'utilisateur pour un produit tout neuf : elle finit
+// saisie telle quelle dans le champ de recherche du site, donc elle est
+// bornée comme n'importe quelle chaîne venue de la PWA.
+describe('validateDriveLivePickJob — requête de recherche', () => {
+  const baseJob = {
+    protocolVersion: 1,
+    jobId: 'job-1',
+    requestedAt: new Date().toISOString(),
+    store: { storeKey: 'leclerc', localStoreId: 'store-1', displayName: 'Leclerc Drive' },
+    product: { productId: 'prod-1', name: 'beurre demi-sel' }
+  };
+
+  it('accepte une tâche sans requête (comportement historique)', () => {
+    expect(validateDriveLivePickJob({ ...baseJob })).toBeTruthy();
+  });
+
+  it('accepte la requête tapée par l’utilisateur', () => {
+    const job = { ...baseJob, product: { ...baseJob.product, searchQuery: 'beurre demi-sel' } };
+    expect(validateDriveLivePickJob(job).product.searchQuery).toBe('beurre demi-sel');
+  });
+
+  it('refuse une requête démesurée ou d’un mauvais type', () => {
+    expect(() =>
+      validateDriveLivePickJob({ ...baseJob, product: { ...baseJob.product, searchQuery: 'x'.repeat(301) } })
+    ).toThrow('Tâche de sélection manuelle invalide');
+    expect(() =>
+      validateDriveLivePickJob({ ...baseJob, product: { ...baseJob.product, searchQuery: 42 } })
+    ).toThrow('Tâche de sélection manuelle invalide');
   });
 });

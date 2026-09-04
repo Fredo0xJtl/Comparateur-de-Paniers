@@ -222,7 +222,11 @@ function isJobProduct(value) {
     isOptionalBoundedString(value.brand, 200) &&
     isOptionalBoundedString(value.barcode, 32) &&
     isOptionalPositiveNumber(value.baseQuantity) &&
-    isOptionalProductUnit(value.baseUnit)
+    isOptionalProductUnit(value.baseUnit) &&
+    // Requête tapée par l'utilisateur pour une sélection en direct (voir
+    // DriveJobProductV1.searchQuery) : bornée comme `name`, elle finit
+    // saisie telle quelle dans le champ de recherche du site.
+    isOptionalBoundedString(value.searchQuery, 300)
   );
 }
 

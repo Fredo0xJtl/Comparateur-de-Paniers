@@ -338,7 +338,3 @@ export function addToScannedHistory(barcode: string): void {
 export function getScannedHistory(): string[] {
   return [...barcodeHistory];
 }
-
-export function clearScannedHistory(): void {
-  barcodeHistory.length = 0;
-}

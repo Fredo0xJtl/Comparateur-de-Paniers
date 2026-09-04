@@ -59,6 +59,11 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   lastUsedAt?: string;
+  // Marqué par l'utilisateur pour les produits récurrents, afin de les
+  // retrouver en tête de liste une fois la base de produits mémorisés
+  // devenue longue. Optionnel : une base déjà installée reste valable sans
+  // migration, une valeur absente vaut "pas favori".
+  isFavorite?: boolean;
 }
 
 export interface UserStore {
@@ -230,6 +235,16 @@ export interface UserSettings {
   preferExactBarcode: boolean;
   allowPrivateLabelByDefault: boolean;
   experimentalAddToCart: boolean;
+  // Autorise la recherche par nom dans Open Food Facts, depuis l'écran
+  // d'ajout. Optionnel et faux par défaut : sans lui, aucun mot tapé ne
+  // quitte l'appareil (la recherche par nom est purement locale), alors
+  // qu'une consultation par code-barres n'expose qu'un produit à la fois.
+  // Le champ est optionnel pour qu'une base déjà installée reste valable
+  // sans migration — une valeur absente vaut « désactivé ».
+  openFoodFactsNameSearch?: boolean;
+  // 'system' suit la préférence du téléphone/navigateur (comportement
+  // d'origine). Optionnel : une base existante sans ce champ vaut 'system'.
+  theme?: 'system' | 'light' | 'dark';
   cartAutomationConsentVersion?: number;
   cartAutomationConsentedAt?: string;
   // Au-delà de cet âge, un prix collecté (même toujours `available`) n'est

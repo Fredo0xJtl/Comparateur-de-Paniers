@@ -59,6 +59,111 @@ export async function lookupOpenFoodFactsProduct(barcode: string): Promise<OpenF
   }
 }
 
+// Résultat d'une recherche par nom : même contenu qu'une fiche scannée, plus
+// le code-barres — c'est justement lui qu'on vient chercher. Sans code-barres,
+// un produit ajouté par son nom ne peut jamais obtenir de correspondance
+// certaine en magasin (voir classifyMatchType dans driveRefreshService) et
+// reste indéfiniment en « correspondance probable » à valider à la main.
+export type OpenFoodFactsSuggestion = OpenFoodFactsProduct & { barcode: string };
+
+// La recherche par mots-clés passe par /cgi/search.pl, et NON par le service
+// search.openfoodfacts.org (Search-a-licious) qu'Open Food Facts présente
+// pourtant comme son remplaçant. Raison vérifiée le 03/09 : ce dernier ne
+// renvoie aucun en-tête Access-Control-Allow-Origin, donc le navigateur
+// refuse sa réponse (« blocked by CORS policy ») — il n'est utilisable qu'en
+// dehors d'une page web. /cgi/search.pl répond au contraire avec
+// `Access-Control-Allow-Origin: *`, en 0,4 à 0,9 s, et donne de bien
+// meilleurs résultats français sur les mêmes mots (« beurre demi-sel » :
+// Grand Fermage, Elle et Vire, Paysan Breton, Président — là où l'autre
+// remontait des produits suisses et polonais).
+//
+// Deux limites assumées : ce point d'accès est annoncé comme déprécié et
+// répond parfois 503 (constaté à l'essai) — l'échec rend simplement une
+// liste vide, l'utilisateur gardant le chemin « chercher en magasin ». Et
+// aucun filtre par pays n'est appliqué : celui de l'API a répondu 503 une
+// fois sur deux, alors que les résultats non filtrés sont déjà pertinents.
+const SEARCH_TIMEOUT_MS = 8_000;
+const SEARCH_RESULT_LIMIT = 6;
+
+// En dessous de trois lettres, la recherche ne rend que du bruit : autant ne
+// pas envoyer la saisie sur le réseau du tout.
+const SEARCH_MIN_QUERY_LENGTH = 3;
+
+const BARCODE_PATTERN = /^\d{8,14}$/;
+
+export async function searchOpenFoodFactsProducts(query: string): Promise<OpenFoodFactsSuggestion[]> {
+  const terms = query.trim();
+  if (terms.length < SEARCH_MIN_QUERY_LENGTH) {
+    return [];
+  }
+  try {
+    const url = new URL('https://world.openfoodfacts.org/cgi/search.pl');
+    url.searchParams.set('search_terms', terms);
+    url.searchParams.set('search_simple', '1');
+    url.searchParams.set('json', '1');
+    url.searchParams.set('page_size', String(SEARCH_RESULT_LIMIT));
+    url.searchParams.set(
+      'fields',
+      'code,product_name,product_name_fr,brands,quantity,product_quantity,product_quantity_unit'
+    );
+    const response = await fetch(url, { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
+    if (!response.ok) {
+      return [];
+    }
+    const data: unknown = await response.json();
+    if (!isRecord(data) || !Array.isArray(data.products)) {
+      return [];
+    }
+    return data.products.flatMap((hit) => {
+      const suggestion = toSuggestion(hit);
+      return suggestion ? [suggestion] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function toSuggestion(hit: unknown): OpenFoodFactsSuggestion | null {
+  if (!isRecord(hit)) {
+    return null;
+  }
+  // Un résultat sans code-barres exploitable n'apporte rien de plus que les
+  // mots déjà tapés : tout l'intérêt de cette recherche est le code-barres.
+  const barcode = typeof hit.code === 'string' ? hit.code.trim() : '';
+  if (!BARCODE_PATTERN.test(barcode)) {
+    return null;
+  }
+  const genericName = typeof hit.product_name === 'string' ? hit.product_name.trim() : '';
+  const frenchName = typeof hit.product_name_fr === 'string' ? hit.product_name_fr.trim() : '';
+  const name = frenchName || genericName;
+  if (!name) {
+    return null;
+  }
+  const brand = pickBestBrand(joinBrands(hit.brands), name);
+  const format = parseOffQuantity(hit);
+  return {
+    barcode,
+    name,
+    ...(brand ? { brand } : {}),
+    ...(format ? format : {})
+  };
+}
+
+// `brands` arrive comme une chaîne ("Nestlé, La Laitière") sur ce point
+// d'accès, mais comme un tableau (["Cora"]) sur search.openfoodfacts.org —
+// divergence vérifiée le 03/09. Les deux formes sont ramenées à celle
+// qu'attend pickBestBrand, pour que la marque survive à un éventuel
+// changement de point d'accès.
+function joinBrands(rawBrands: unknown): string {
+  if (typeof rawBrands === 'string') {
+    return rawBrands;
+  }
+  if (Array.isArray(rawBrands)) {
+    return rawBrands.filter((entry): entry is string => typeof entry === 'string').join(', ');
+  }
+  return '';
+}
+
 // `brands` liste souvent plusieurs noms séparés par des virgules, du plus
 // générique (le groupe/holding) au plus spécifique (la marque réellement
 // imprimée sur l'emballage et affichée en rayon) — vérifié empiriquement sur

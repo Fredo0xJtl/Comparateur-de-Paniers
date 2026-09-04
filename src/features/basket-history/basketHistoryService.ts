@@ -59,16 +59,8 @@ export async function updateValidatedBasketCartFillJobId(basketId: string, cartF
   await db.validatedBaskets.update(basketId, { cartFillJobId, cartFillStatus: 'in_progress' });
 }
 
-export async function getValidatedBasket(basketId: string): Promise<ValidatedBasket | undefined> {
-  return db.validatedBaskets.get(basketId);
-}
-
 export async function listValidatedBaskets(): Promise<ValidatedBasket[]> {
   return db.validatedBaskets.orderBy('validatedAt').reverse().toArray();
-}
-
-export async function getTotalRealizedSavings(): Promise<number> {
-  return (await getSavingsSummary()).realized;
 }
 
 export async function getSavingsSummary(): Promise<{ estimated: number; validated: number; realized: number }> {

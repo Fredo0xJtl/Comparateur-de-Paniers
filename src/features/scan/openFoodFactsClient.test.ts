@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { lookupOpenFoodFactsProduct } from './openFoodFactsClient';
+import { lookupOpenFoodFactsProduct, searchOpenFoodFactsProducts } from './openFoodFactsClient';
 
 function mockFetchOnce(body: unknown, ok = true) {
   vi.stubGlobal(
@@ -197,5 +197,85 @@ describe('parsing du champ quantity : lots écrits en toutes lettres', () => {
     const result = await lookupOpenFoodFactsProduct('3256224234494');
     expect(result?.baseQuantity).toBe(6000);
     expect(result?.baseUnit).toBe('ml');
+  });
+});
+
+describe('searchOpenFoodFactsProducts', () => {
+  // Divergence réelle entre les deux services, vérifiée le 03/09 : la fiche
+  // par code-barres rend `brands` comme une chaîne, la recherche par nom
+  // comme un tableau. Sans normalisation, la marque était systématiquement
+  // perdue sur ce chemin.
+  it('lit la marque et le format de la fiche trouvée', async () => {
+    mockFetchOnce({
+      products: [
+        {
+          code: '3523230030793',
+          product_name_fr: 'beurre demi-sel',
+          brands: 'grand fermage',
+          quantity: '250 g'
+        }
+      ]
+    });
+
+    const results = await searchOpenFoodFactsProducts('beurre demi-sel');
+
+    expect(results).toEqual([
+      {
+        barcode: '3523230030793',
+        name: 'beurre demi-sel',
+        brand: 'grand fermage',
+        baseQuantity: 250,
+        baseUnit: 'g'
+      }
+    ]);
+  });
+
+  // Tout l'intérêt de cette recherche est le code-barres : une fiche qui n'en
+  // porte pas n'apporte rien de plus que les mots déjà tapés.
+  it('écarte les fiches sans code-barres exploitable et sans nom', async () => {
+    mockFetchOnce({
+      products: [
+        { code: 'abc', product_name_fr: 'Fiche sans code-barres valide' },
+        { code: '3257980702487', product_name_fr: '   ' },
+        { code: '7613269283164', product_name: 'Ice Tea Pfirsich' }
+      ]
+    });
+
+    const results = await searchOpenFoodFactsProducts('ice tea');
+
+    expect(results).toEqual([{ barcode: '7613269283164', name: 'Ice Tea Pfirsich' }]);
+  });
+
+  // Une ou deux lettres ne rendent que du bruit : autant ne rien envoyer sur
+  // le réseau du tout.
+  it('n envoie aucune requête pour une saisie trop courte', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await searchOpenFoodFactsProducts('be')).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rend une liste vide quand le service répond en erreur', async () => {
+    mockFetchOnce({ products: [] }, false);
+
+    expect(await searchOpenFoodFactsProducts('beurre demi-sel')).toEqual([]);
+  });
+
+  it('rend une liste vide quand le réseau échoue', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+
+    expect(await searchOpenFoodFactsProducts('beurre demi-sel')).toEqual([]);
+  });
+
+  // search.openfoodfacts.org, écarté pour cause de CORS mais toujours en
+  // service, rend `brands` sous forme de tableau : la marque doit survivre à
+  // un éventuel retour vers ce point d'accès.
+  it('accepte aussi une marque livrée sous forme de tableau', async () => {
+    mockFetchOnce({ products: [{ code: '3257980702487', product_name_fr: 'Beurre demi-sel', brands: ['Cora'] }] });
+
+    const results = await searchOpenFoodFactsProducts('beurre demi-sel');
+
+    expect(results[0]?.brand).toBe('Cora');
   });
 });

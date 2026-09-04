@@ -124,12 +124,9 @@ export function ShoppingListPage() {
 
   return (
     <section className="pageStack" aria-labelledby="list-title">
-      <div>
-        <p className="eyebrow">Liste</p>
+      <div className="pageTitle">
         <h2 id="list-title">Liste de courses active</h2>
-        <p className="lead">
-          Ajoute tes produits récurrents, ajuste les quantités, puis copie la liste en texte.
-        </p>
+        <p className="lead">Gère tes articles et ajoute tes favoris en un clic.</p>
       </div>
 
       {message && <p className="panelText">{message}</p>}
@@ -141,101 +138,113 @@ export function ShoppingListPage() {
 
       {status === 'ready' && (
         <>
-          <div className="settingsPanel">
-            <div>
-              <h3>Articles de la liste</h3>
-              <p>{rows.length === 0 ? 'Aucun article pour le moment.' : `${rows.length} article(s).`}</p>
-            </div>
+          <details className="shoppingListPanel">
+            <summary>
+              <span>Articles de la liste</span>
+              <span className="countBadge">{rows.length}</span>
+            </summary>
 
-            <div className="shoppingRows">
-              {rows.map((row) => (
-                <article className="shoppingRow" key={row.item.id}>
-                  <div>
-                    <h4>{row.product.name}</h4>
-                    <p>{row.product.brand ?? 'Marque non renseignée'}</p>
-                  </div>
-                  <label>
-                    <span>Quantité</span>
-                    <input
-                      id={`shopping-quantity-${row.item.id}`}
-                      name="wantedQuantity"
-                      min="1"
-                      inputMode="numeric"
-                      type="number"
-                      value={quantityDrafts[row.item.id] ?? String(row.item.wantedQuantity)}
-                      onBlur={() => void handleQuantityCommit(row)}
-                      onChange={(event) =>
-                        setQuantityDrafts((current) => ({
-                          ...current,
-                          [row.item.id]: event.target.value
-                        }))
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.currentTarget.blur();
+            {rows.length === 0 ? (
+              <p className="panelText">Aucun article pour le moment.</p>
+            ) : (
+              <div className="shoppingRows">
+                {rows.map((row) => (
+                  <article className="shoppingRow" key={row.item.id}>
+                    <div>
+                      <h4>{row.product.name}</h4>
+                      <p>{row.product.brand ?? 'Marque non renseignée'}</p>
+                    </div>
+                    <label>
+                      <span>Quantité</span>
+                      <input
+                        id={`shopping-quantity-${row.item.id}`}
+                        name="wantedQuantity"
+                        min="1"
+                        inputMode="numeric"
+                        type="number"
+                        value={quantityDrafts[row.item.id] ?? String(row.item.wantedQuantity)}
+                        onBlur={() => void handleQuantityCommit(row)}
+                        onChange={(event) =>
+                          setQuantityDrafts((current) => ({
+                            ...current,
+                            [row.item.id]: event.target.value
+                          }))
                         }
-                      }}
-                    />
-                  </label>
-                  <button className="dangerButton" type="button" onClick={() => void handleRemove(row)}>
-                    Retirer
-                  </button>
-                </article>
-              ))}
-            </div>
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </label>
+                    <button className="dangerButton" type="button" onClick={() => void handleRemove(row)}>
+                      Retirer
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
 
             <div className="cardActions">
               <button className="secondaryButton" type="button" onClick={() => void handleCopy()}>
                 Copier la liste
               </button>
-              <button
-                className="secondaryButton"
-                type="button"
-                onClick={() => setConfirmClear(true)}
-                disabled={rows.length === 0}
-              >
-                Vider la liste
-              </button>
               <button className="secondaryButton" type="button" onClick={() => void handleArchive()}>
                 Archiver
               </button>
             </div>
+          </details>
 
-            {confirmClear && (
-              <div className="confirmPanel">
-                <p>Confirmer le vidage de la liste active ?</p>
-                <button className="dangerButton" type="button" onClick={() => void handleClearConfirmed()}>
-                  Confirmer
-                </button>
-                <button
-                  className="secondaryButton"
-                  type="button"
-                  onClick={() => setConfirmClear(false)}
-                >
-                  Annuler
-                </button>
-              </div>
-            )}
+          <details className="shoppingListPanel shoppingListPanelFavorites" open>
+            <summary>
+              <span>★ Produits favoris</span>
+              <span className="countBadge">{products.filter((product) => product.isFavorite).length}</span>
+            </summary>
+            {(() => {
+              const favorites = products.filter((product) => product.isFavorite);
+              return favorites.length === 0 ? (
+                <p className="panelText">Aucun favori pour le moment — marque-en depuis la page Produits.</p>
+              ) : (
+                <div className="quickAddGrid">
+                  {favorites.map((product) => (
+                    <button
+                      className="secondaryButton quickAddButton"
+                      key={product.id}
+                      type="button"
+                      onClick={() => void handleAddProduct(product)}
+                    >
+                      ★ {product.name}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </details>
+
+          {/* Hors des deux <details> ci-dessus : reste accessible tout en
+              bas de la page, même volets fermés. */}
+          <div className="cardActions cardActionsCentered">
+            <button
+              className="dangerButton"
+              type="button"
+              onClick={() => setConfirmClear(true)}
+              disabled={rows.length === 0}
+            >
+              Vider la liste
+            </button>
           </div>
 
-          <div className="settingsPanel">
-            <div>
-              <h3>Produits récurrents</h3>
-              <p>Ajoute rapidement un produit mémorisé à la liste active.</p>
+          {confirmClear && (
+            <div className="confirmPanel">
+              <p>Confirmer le vidage de la liste active ?</p>
+              <button className="dangerButton" type="button" onClick={() => void handleClearConfirmed()}>
+                Confirmer
+              </button>
+              <button className="secondaryButton" type="button" onClick={() => setConfirmClear(false)}>
+                Annuler
+              </button>
             </div>
-            <div className="quickAddGrid">
-              {products.map((product) => (
-                <button
-                  className="secondaryButton quickAddButton"
-                  key={product.id}
-                  type="button"
-                  onClick={() => void handleAddProduct(product)}
-                >
-                  {product.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </>
       )}
     </section>

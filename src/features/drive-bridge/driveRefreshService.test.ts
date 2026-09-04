@@ -153,7 +153,7 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
       updatedAt: '2026-08-01T00:00:00.000Z'
     });
 
-    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1 }), undefined);
 
     const candidate = await db.productCandidates.get(candidateId);
     expect(candidate?.isRejected).toBe(false);
@@ -175,7 +175,7 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
       updatedAt: '2026-08-01T00:00:00.000Z'
     });
 
-    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.95 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.95 }), undefined);
 
     const candidate = await db.productCandidates.get(candidateId);
     expect(candidate?.isRejected).toBe(true);
@@ -191,7 +191,6 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
     const candidateId = 'price-hyperu-prod-1';
     await persistDriveObservation(
       makeObservation({ storeKey: 'hyperu', matchStage: 'manual', matchScore: 1, priceEuro: 5.94, observedName: 'Lait des campagnes 1L' }),
-      testStore,
       undefined
     );
     let candidate = await db.productCandidates.get(candidateId);
@@ -205,7 +204,6 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
         priceEuro: 2.12,
         observedName: 'BLEDINA BLEDIDEJ - Lait et Céréales bébé'
       }),
-      testStore,
       undefined
     );
 
@@ -217,11 +215,98 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
     expect(snapshot?.price).toBe(5.94);
   });
 
+
+  // Bug réel relevé sur le téléphone le 02/09 : l'étiquette `private_label`
+  // (marque de distributeur) était posée sur le SEUL critère du score de
+  // recouvrement de noms, entre 0,7 et 0,9, sans jamais regarder la marque.
+  // Or getCandidateConfidence (scoring.ts) ramène un `private_label` à une
+  // confiance de 0 tant que l'utilisateur n'a pas accepté les marques de
+  // distributeur pour ce produit — un produit de la BONNE marque, correctement
+  // trouvé, redemandait donc une validation manuelle à chaque comparatif.
+  describe('étiquette de correspondance et marque réellement observée', () => {
+    async function seedProduct(brand: string | undefined) {
+      await db.products.put({
+        id: 'prod-1',
+        name: 'Riz basmati',
+        brand,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    it('ne traite plus en marque de distributeur un candidat de la marque demandée', async () => {
+      await seedProduct('Taureau Ailé');
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'name', matchScore: 0.75, observedBrand: 'Taureau Ailé' }),
+        undefined
+      );
+
+      const candidate = await db.productCandidates.get('price-leclerc-prod-1');
+      expect(candidate?.matchType).toBe('equivalent_brand');
+    });
+
+    it('tolère la casse et les accents sur la marque', async () => {
+      await seedProduct('Taureau Ailé');
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'name', matchScore: 0.75, observedBrand: 'TAUREAU AILE' }),
+        undefined
+      );
+
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('equivalent_brand');
+    });
+
+    it('garde l’étiquette marque de distributeur quand la marque diffère vraiment', async () => {
+      await seedProduct('Taureau Ailé');
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'name', matchScore: 0.75, observedBrand: 'Eco+' }),
+        undefined
+      );
+
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('private_label');
+    });
+
+    it('reste incertain sous 0,7, même à marque identique', async () => {
+      await seedProduct('Taureau Ailé');
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'name', matchScore: 0.68, observedBrand: 'Taureau Ailé' }),
+        undefined
+      );
+
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('uncertain');
+    });
+
+    it('sans marque connue côté produit, garde le comportement d’avant', async () => {
+      await seedProduct(undefined);
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'name', matchScore: 0.75, observedBrand: 'Eco+' }),
+        undefined
+      );
+
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('private_label');
+    });
+
+    it('une confirmation humaine et un code-barres restent prioritaires sur la marque', async () => {
+      await seedProduct('Eco+');
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'manual', matchScore: 0.2, observedBrand: 'Autre' }),
+        undefined
+      );
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('manual_override');
+
+      await db.productCandidates.clear();
+      await persistDriveObservation(
+        makeObservation({ matchStage: 'ean', matchScore: 0.2, observedBrand: 'Autre' }),
+        undefined
+      );
+      expect((await db.productCandidates.get('price-leclerc-prod-1'))?.matchType).toBe('exact_barcode');
+    });
+  });
+
   it('un refresh automatique met bien à jour un candidat qui n’est pas (encore) manual_override', async () => {
     const candidateId = 'price-leclerc-prod-1';
-    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3 }), undefined);
 
-    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3.5 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3.5 }), undefined);
 
     const candidate = await db.productCandidates.get(candidateId);
     const snapshot = await db.priceSnapshots.get(candidateId);
@@ -238,7 +323,6 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
     const candidateId = 'price-leclerc-prod-1';
     await persistDriveObservation(
       makeObservation({ matchStage: 'name', matchScore: 0.9, observedQuantity: 1000, observedUnit: 'g' }),
-      testStore,
       undefined
     );
 
@@ -257,7 +341,6 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
         observedQuantity: 6000,
         observedUnit: 'ml'
       }),
-      testStore,
       undefined
     );
 
@@ -273,7 +356,7 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
   // manual_override (skipAutomaticOverwrite). Même contrat requis côté échec.
   it('un échec de recherche automatique ne rend jamais indisponible un candidat déjà confirmé manuellement', async () => {
     const candidateId = 'price-leclerc-prod-1';
-    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1, priceEuro: 3.28 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1, priceEuro: 3.28 }), undefined);
 
     await markMatchedPriceUnavailable('leclerc', 'prod-1');
 
@@ -285,7 +368,7 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
 
   it("un échec de recherche automatique rend bien indisponible un candidat qui n'est pas manual_override", async () => {
     const candidateId = 'price-leclerc-prod-1';
-    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'name', matchScore: 0.6, priceEuro: 3 }), undefined);
 
     await markMatchedPriceUnavailable('leclerc', 'prod-1');
 
@@ -304,7 +387,7 @@ describe('persistDriveObservation — isRejected sur confirmation manuelle', () 
   // l'app continuait de recommander ce magasin sur la foi d'un prix mort.
   it("un échec confirmé de l'URL manuelle elle-même (MANUAL_URL_PAGE_INVALID) rend indisponible même un manual_override", async () => {
     const candidateId = 'price-leclerc-prod-1';
-    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1, priceEuro: 3.28 }), testStore, undefined);
+    await persistDriveObservation(makeObservation({ matchStage: 'manual', matchScore: 1, priceEuro: 3.28 }), undefined);
 
     await markMatchedPriceUnavailable('leclerc', 'prod-1', true);
 
@@ -447,7 +530,7 @@ describe('corrections manuelles rafraîchissables', () => {
     const now = new Date().toISOString();
     await persistDriveObservation(livePickObservation(
       'https://fd7-courses.leclercdrive.fr/magasin-test/fiche-produits-60892-Puree.aspx'
-    ), leclercStore, undefined);
+    ), undefined);
     await db.driveManualOverrides.put({
       productId: 'prod-puree',
       storeKey: 'leclerc',
@@ -625,7 +708,6 @@ describe('permaliens appris (knownProductUrls)', () => {
         matchScore: 0.82,
         matchStage: 'known_url'
       },
-      leclercStore,
       undefined
     );
     const memory = await db.driveSearchMemory.get(['prod-puree', 'leclerc']);

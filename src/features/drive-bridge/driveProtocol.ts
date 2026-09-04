@@ -26,6 +26,14 @@ export type DriveJobProductV1 = {
   barcode?: string;
   baseQuantity?: number;
   baseUnit?: DriveProductUnit;
+  // Sélection en direct uniquement (DriveLivePickJobV1) : les mots que
+  // l'utilisateur vient de taper dans l'écran d'ajout pour un produit qui
+  // n'existe encore nulle part. Sa propre formulation est envoyée telle
+  // quelle dans le champ de recherche du site — contrairement à `name`,
+  // hérité d'Open Food Facts et souvent trop bruité pour un moteur qui
+  // applique un ET strict sur tous les mots. Ignoré par le rafraîchissement
+  // automatique, qui garde sa cascade.
+  searchQuery?: string;
 };
 
 // Per-store lists of productIds already confirmed absent from that store's
@@ -471,44 +479,6 @@ export type DriveAddToCartResultV1 = {
   matchedPriceEuro?: number;
 };
 
-const DRIVE_MAX_CART_ITEMS = 100;
-
-export function validateDriveAddToCartJob(value: unknown, now = Date.now()): DriveAddToCartJobV1 {
-  if (
-    !isRecord(value) ||
-    value.protocolVersion !== DRIVE_PROTOCOL_VERSION ||
-    !isIdentifier(value.jobId) ||
-    !isIsoDate(value.requestedAt) ||
-    !isJobStore(value.store) ||
-    !Array.isArray(value.items) ||
-    value.items.length < 1 ||
-    value.items.length > DRIVE_MAX_CART_ITEMS ||
-    !value.items.every((item) => isAddToCartItem(item, (value.store as DriveJobStoreV1).storeKey))
-  ) {
-    throw new Error('Tâche ajout panier invalide');
-  }
-  const age = now - Date.parse(value.requestedAt as string);
-  if (age < -60_000 || age > DRIVE_JOB_MAX_AGE_MS) {
-    throw new Error('Tâche ajout panier expirée');
-  }
-  return value as DriveAddToCartJobV1;
-}
-
-function isAddToCartItem(value: unknown, storeKey: unknown): value is DriveAddToCartItemV1 {
-  return (
-    isRecord(value) &&
-    isIdentifier(value.productId) &&
-    isBoundedString(value.name, 300) &&
-    isOptionalBoundedString(value.brand, 200) &&
-    isOptionalBoundedString(value.barcode, 32) &&
-    (value.productUrl === undefined || isOfficialProductUrl(value.productUrl, storeKey)) &&
-    typeof value.quantity === 'number' &&
-    Number.isFinite(value.quantity) &&
-    value.quantity > 0 &&
-    value.quantity <= 99
-  );
-}
-
 // --- Live pick job (Leclerc manual correction) ---
 // Leclerc's search-result cards have no stable per-product URL to paste
 // (see the comment on readProductCandidatesOnPage's href fallback in
@@ -530,25 +500,6 @@ export type DriveLivePickJobV1 = {
   // commentaire jumeau dans drive-protocol.js.
   startUrl?: string;
 };
-
-export function validateDriveLivePickJob(value: unknown, now = Date.now()): DriveLivePickJobV1 {
-  if (
-    !isRecord(value) ||
-    value.protocolVersion !== DRIVE_PROTOCOL_VERSION ||
-    !isIdentifier(value.jobId) ||
-    !isIsoDate(value.requestedAt) ||
-    !isJobStore(value.store) ||
-    !isJobProduct(value.product) ||
-    (value.startUrl !== undefined && !isOfficialProductUrl(value.startUrl, (value.store as DriveJobStoreV1).storeKey))
-  ) {
-    throw new Error('Tâche de sélection manuelle invalide');
-  }
-  const age = now - Date.parse(value.requestedAt as string);
-  if (age < -60_000 || age > DRIVE_JOB_MAX_AGE_MS) {
-    throw new Error('Tâche de sélection manuelle expirée');
-  }
-  return value as DriveLivePickJobV1;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

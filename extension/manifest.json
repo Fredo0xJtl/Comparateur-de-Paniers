@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Comparateur de Paniers — Connecteur Drive",
   "description": "Collecte locale et volontaire des prix affichés par les catalogues Drive sélectionnés.",
-  "version": "0.5.98",
+  "version": "0.6.8",
   "minimum_chrome_version": "109",
   "permissions": ["tabs", "storage", "scripting"],
   "host_permissions": [
@@ -16,10 +16,12 @@
   "action": {
     "default_title": "Comparateur de Paniers — Drive"
   },
+  "//content_scripts.matches": "comparateur-panier.local/* : accès de test personnel au Comparateur de Paniers déployé sur le Raspberry Pi de l'auteur (réseau local uniquement, aucun port dans un match pattern WebExtension — voir extension/shared/bridge-origins.js). Alias mDNS dédié plutôt que raspberrypi.local : ce nom générique matcherait aussi le vhost HealthPanel (données de santé) qui tourne sur le même hôte à un autre port, un match pattern ne pouvant pas filtrer par port. À retirer avant toute soumission AMO publique/listée — n'a de sens que pour une version privée (unlisted) distribuée uniquement à l'auteur.",
   "content_scripts": [
     {
       "matches": [
-        "https://fredo0xjtl.github.io/Comparateur-de-Paniers/*"
+        "https://fredo0xjtl.github.io/Comparateur-de-Paniers/*",
+        "https://comparateur-panier.local/*"
       ],
       "js": ["bridge/pwa-bridge.js"],
       "run_at": "document_start"
