@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Comparateur de Panier">
+  <rect width="512" height="512" fill="#24583a"/>
+  <g transform="translate(256 256) scale(0.8) translate(-256 -256)">
+    <path fill="#f7f7f2" d="M128 150h256l-28 152H170l-42-152Zm64 186a32 32 0 1 1-64 0 32 32 0 0 1 64 0Zm224 0a32 32 0 1 1-64 0 32 32 0 0 1 64 0Z"/>
+    <path fill="#9fc8ab" d="M178 196h156l-10 54H193l-15-54Z"/>
+    <path fill="#f7f7f2" d="M150 126h-42a18 18 0 0 0 0 36h70l-28-36Z"/>
+  </g>
+</svg>
