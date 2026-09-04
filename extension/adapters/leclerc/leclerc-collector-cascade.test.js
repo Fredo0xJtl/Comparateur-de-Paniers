@@ -1854,3 +1854,74 @@ describe('collectLeclercStore — relecture d’une fiche corrigée à la main',
     expect(startProductSearchOnPage).not.toHaveBeenCalled();
   });
 });
+
+// Campagne de mesure du 02/09 (tools/bench-leclerc-stages.mjs, 4 étages ×
+// 11 produits réels) : sur les 26 étages qui ont abouti, le candidat
+// finalement retenu était déjà présent dès la première lecture non vide, et
+// aucun étage n'a jamais abouti au-delà de 5,1 s. Les seuls étages à
+// consommer les 15 s complètes étaient ceux où la page continuait à charger
+// des cartes en lazy-load sans qu'aucune n'atteigne le score : ni le plateau
+// (stableRounds) ni `remaining === 0` ne se déclenchaient jamais, donc rien
+// n'arrêtait la boucle avant la deadline. Ce test fige la garde qui coupe
+// cette attente-là.
+describe('collectLeclercStore — une page qui charge sans fin ne consomme plus tout le budget', () => {
+  it("abandonne l'étage peu après la première lecture au lieu d'attendre la deadline complète", async () => {
+    // Nom d'un seul mot et sans marque : la cascade se réduit au seul étage
+    // 'name' ('name_only' produirait la même requête et est dédupliqué,
+    // 'brand_only' n'a pas de marque exploitable). Le test mesure donc bien
+    // un étage, pas quatre.
+    const product = { productId: 'product-boisson', name: 'Boisson', brand: '' };
+
+    // La page ne se stabilise jamais : chaque lecture ramène une carte de
+    // plus (lazy-load qui progresse) et il reste toujours des emplacements
+    // vides — exactement le profil des recherches "Lipton" / "HERTA"
+    // mesurées. Aucune carte ne ressemble au produit cherché.
+    let lectures = 0;
+    const scripting = {
+      executeScript: makeDispatcher({
+        dismissCookieConsentOnPage: () => ({ dismissed: false }),
+        readPublicLeclercPageState: () => ({
+          hostname: 'fd4-courses.leclercdrive.fr',
+          pathname: '/magasin-1/recherche.aspx',
+          hasCaptcha: false,
+          hasStorePrompt: false,
+          hasCatalog: true
+        }),
+        startProductSearchOnPage: (item) => ({ started: true, query: item.name }),
+        inspectLeclercSearchNavigationOnPage: () => ({ ready: true }),
+        triggerLeclercLazyLoadOnPage: () => ({ remainingPlaceholders: 5 }),
+        readProductCandidatesOnPage: () => {
+          lectures += 1;
+          return Array.from({ length: lectures }, (_unused, index) => ({
+            name: `Chaussettes de randonnée taille ${index + 40}`,
+            priceEuro: 3 + index,
+            productUrl: `https://fd4-courses.leclercdrive.fr/magasin-1/produit/chaussettes-${index}`
+          }));
+        },
+        inspectLeclercResultsOnPage: () => ({ hasCaptcha: false, resultCount: lectures })
+      })
+    };
+
+    const startedAt = Date.now();
+    const result = await collectLeclercStore({
+      scripting,
+      tabId: 22,
+      signal: new AbortController().signal,
+      job: { jobId: 'job-eeee3333ffff4444' },
+      store: { storeKey: 'leclerc', localStoreId: 'store-1' },
+      products: [product]
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(result.errors).toHaveLength(1);
+    const stages = result.errors[0].details?.stageAttempts ?? [];
+    const nameStage = stages.find((stage) => stage.stage === 'name');
+    expect(nameStage?.timing?.exitReason).toBe('settle_budget_exhausted');
+    // La boucle a bien laissé au lazy-load plusieurs tours pour ramener
+    // d'autres cartes (le cas "Orangensaft/Tropicana" documenté dans
+    // waitForProductCandidates), elle n'a pas coupé dès la première lecture.
+    expect(lectures).toBeGreaterThan(1);
+    // Et surtout : elle n'a pas attendu les 15 s du budget total.
+    expect(elapsedMs).toBeLessThan(12_000);
+  }, 30_000);
+});

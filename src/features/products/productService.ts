@@ -93,10 +93,19 @@ export function validateProductForm(values: ProductFormValues) {
 // baseQuantity (sinon toujours vide) : les collecteurs Leclerc/Hyper U s'en
 // servent ensuite pour privilégier le même conditionnement dans les deux
 // magasins plutôt que d'accepter n'importe quel format de la marque.
+export type ProductCreationOutcome = {
+  isValid: boolean;
+  errors: ProductFormErrors;
+  normalized: ProductFormValues;
+  // Présent uniquement quand la création a abouti (voir le commentaire sur
+  // le `return` en fin de fonction).
+  product?: Product;
+};
+
 export async function createProduct(
   values: ProductFormValues,
   offFormat?: { baseQuantity?: number; baseUnit?: ProductBaseUnit }
-) {
+): Promise<ProductCreationOutcome> {
   const parsed = validateProductForm(values);
   if (!parsed.isValid || !isComparisonUnit(parsed.normalized.comparisonUnit)) {
     return parsed;
@@ -120,7 +129,12 @@ export async function createProduct(
   };
 
   await db.products.add(product);
-  return parsed;
+  // Le produit créé est rendu à l'appelant : le seul moyen de le retrouver
+  // ensuite était `findProductByBarcode`, impossible pour un produit ajouté
+  // par son nom depuis l'écran d'ajout (pas de code-barres). Champ ajouté,
+  // jamais retiré : les appelants qui ne lisent que `isValid`/`errors`
+  // restent inchangés.
+  return { ...parsed, product };
 }
 
 export async function updateProduct(product: Product, values: ProductFormValues) {
@@ -165,6 +179,13 @@ export async function deleteProduct(productId: string) {
 export async function markProductUsed(product: Product) {
   await db.products.update(product.id, {
     lastUsedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+}
+
+export async function toggleProductFavorite(product: Product) {
+  await db.products.update(product.id, {
+    isFavorite: !product.isFavorite,
     updatedAt: new Date().toISOString()
   });
 }

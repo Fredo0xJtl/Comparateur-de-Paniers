@@ -360,7 +360,8 @@ function selectOptimizedDecision(
   const validOptions = eligibleOptions.filter(
     (option) => !option.requiresValidation && option.lineTotal !== undefined
   );
-  const pricedBest = pickBestOption(validOptions, storeBias);
+  const selectableOptions = preferManualOptions(validOptions);
+  const pricedBest = pickBestOption(selectableOptions, storeBias);
   // Formats différents entre les deux magasins : c'est le prix au kilo/litre
   // qui tranche, pas le prix du paquet (voir buildUnitPriceArbitration). Un
   // choix explicite de l'utilisateur (magasin forcé) reste prioritaire, et
@@ -368,7 +369,7 @@ function selectOptimizedDecision(
   // retenues — sinon on garde le comportement habituel.
   const arbitrated =
     !forcedStoreKey && unitPriceArbitration
-      ? validOptions.find((option) => option.candidate.id === unitPriceArbitration.winner.candidate.id)
+      ? selectableOptions.find((option) => option.candidate.id === unitPriceArbitration.winner.candidate.id)
       : undefined;
   const selected = arbitrated ?? pricedBest;
 
@@ -966,6 +967,11 @@ function compareOptions(left: CandidateOption, right: CandidateOption) {
   }
 
   return right.confidenceScore - left.confidenceScore;
+}
+
+function preferManualOptions(options: CandidateOption[]): CandidateOption[] {
+  const manualOptions = options.filter((option) => option.candidate.matchType === 'manual_override');
+  return manualOptions.length > 0 ? manualOptions : options;
 }
 
 // Trie par prix/confiance comme d'habitude, puis, seulement en cas d'ex

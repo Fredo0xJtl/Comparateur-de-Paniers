@@ -26,6 +26,7 @@ import {
   type DriveLivePickJobV1,
   type DriveManualUrlOverridesV1,
   type DrivePriceObservationV1,
+  type DriveProductUnit,
   type DriveRefreshJobV1,
   type DriveSearchHintsV1,
   type DriveStageAttemptV1
@@ -34,10 +35,16 @@ import {
 // How long a "not sold at this store" memory entry is trusted before the
 // collector searches for that product there again — a store's assortment
 // does change over time, so this must eventually expire rather than hide a
-// newly-listed product forever. 14 days is a judgment call (not something
-// the user specified), balancing "stop wasting time on doomed searches"
-// against "notice a new listing reasonably soon".
-const NOT_FOUND_MEMORY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// newly-listed product forever. Lowered from 14 to 3 days on 2026-09-04
+// (user report) : "introuvable" ne veut pas dire "n'existe pas" — un produit
+// en rupture de stock disparaît souvent des résultats de recherche Leclerc/
+// Hyper U comme s'il n'existait pas, et un réassort peut survenir en
+// quelques jours seulement. 14 jours masquait donc un retour en rayon
+// pendant deux semaines. 3 jours reste un compromis (pas une valeur
+// mesurée) : assez court pour retrouver un réassort rapide, assez long pour
+// ne pas relancer une recherche vouée à l'échec à chaque rafraîchissement
+// quotidien.
+const NOT_FOUND_MEMORY_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 // Nombre maximal de quasi-matchs persistés par produit/magasin en échec —
 // doit rester en phase avec `findLeclercNearMissCandidates`'s `limit` côté
@@ -275,14 +282,6 @@ export async function clearManualUrlOverride(productId: string, storeKey: StoreK
     .delete();
 }
 
-export async function getManualUrlOverride(productId: string, storeKey: StoreKey) {
-  const entry = await db.driveManualOverrides
-    .where('[productId+storeKey]')
-    .equals([productId, storeKey])
-    .first();
-  return entry?.productUrl;
-}
-
 // Vide entièrement la mémoire "produit non trouvé chez ce magasin" (voir
 // buildSearchMemoryHints / NOT_FOUND_MEMORY_TTL_MS) — utile quand cette
 // mémoire retient à tort un échec obsolète (ex. corrigé après un bug de
@@ -309,7 +308,7 @@ export type DriveRefreshDiagnostic = {
     updated: number;
     failed: number;
     // Products filtered out before the collector ran because they were
-    // already known "not_found" at that store within the last 14 days —
+    // already known "not_found" at that store within the last 3 days —
     // included so attempted/updated/failed don't look like they're missing
     // a chunk of the shopping list for no reason.
     skipped: number;
@@ -410,9 +409,59 @@ function toCascadeStage(stage: DrivePriceObservationV1['matchStage']): DriveSear
   return CASCADE_STAGES.find((candidate) => candidate === stage);
 }
 
+// Comparaison de marques insensible à la casse et aux accents — sert
+// uniquement à décider d'une étiquette, jamais à accepter ou refuser un
+// candidat (l'acceptation est déjà tranchée côté collecteur).
+function sameBrand(left: string | undefined, right: string | undefined) {
+  const normalize = (value: string | undefined) =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .trim()
+      .toLocaleLowerCase('fr');
+  const a = normalize(left);
+  const b = normalize(right);
+  return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
+}
+
+// Étiquette de correspondance d'un candidat, à partir de ce qu'on sait de lui.
+//
+// Le point délicat : `private_label` veut dire « marque de distributeur », et
+// getCandidateConfidence (scoring.ts) lui applique une règle très sévère —
+// confiance forcée à 0 tant que l'utilisateur n'a pas accepté les marques de
+// distributeur POUR CE PRODUIT. Cette étiquette était pourtant posée sur le
+// seul critère du score de recouvrement de noms (entre 0,7 et 0,9), sans
+// jamais regarder la marque : un produit de la bonne marque, correctement
+// trouvé, se retrouvait donc étiqueté « marque de distributeur », ramené à une
+// confiance de 0, et redemandé en validation manuelle à chaque comparatif.
+// C'est le motif dominant des « fiches à valider alors que c'est la bonne
+// fiche » signalé le 02/09.
+//
+// Correction volontairement étroite : quand la marque observée correspond à la
+// marque demandée, ce n'est pas une marque de distributeur — l'étiquette
+// devient `equivalent_brand`, dont le plafond de confiance (89) reste sous le
+// 100 réservé à une preuve réelle (code-barres ou confirmation humaine). Rien
+// n'est relâché en amont : le collecteur applique toujours son seuil
+// d'acceptation (deux tiers des mots attendus + recouvrement de catégorie), et
+// un candidat de marque réellement différente reste `private_label`.
+function classifyMatchType(input: {
+  matchStage: DrivePriceObservationV1['matchStage'];
+  barcodeConfirmed: boolean;
+  matchScore: number;
+  productBrand?: string;
+  observedBrand?: string;
+}): ProductCandidate['matchType'] {
+  if (input.matchStage === 'manual') return 'manual_override';
+  if (input.barcodeConfirmed || input.matchStage === 'ean') return 'exact_barcode';
+  if (input.matchScore >= 0.9) return 'equivalent_brand';
+  if (input.matchScore >= 0.7) {
+    return sameBrand(input.productBrand, input.observedBrand) ? 'equivalent_brand' : 'private_label';
+  }
+  return 'uncertain';
+}
+
 export async function persistDriveObservation(
   observation: DrivePriceObservationV1,
-  store: UserStore,
   productBarcode: string | undefined,
   replaceInvalidManualOverride = false
 ): Promise<string> {
@@ -467,16 +516,13 @@ export async function persistDriveObservation(
     // Une correction manuelle (URL collée ou tap direct sur la page) est un
     // choix humain explicite : elle prime sur toute déduction automatique par
     // score, quel que soit le recouvrement de noms observé.
-    const matchType: ProductCandidate['matchType'] =
-      observation.matchStage === 'manual'
-        ? 'manual_override'
-        : barcodeConfirmed || observation.matchStage === 'ean'
-          ? 'exact_barcode'
-          : matchScore >= 0.9
-            ? 'equivalent_brand'
-            : matchScore >= 0.7
-              ? 'private_label'
-              : 'uncertain';
+    const matchType = classifyMatchType({
+      matchStage: observation.matchStage,
+      barcodeConfirmed,
+      matchScore,
+      productBrand: (await db.products.get(observation.productId))?.brand,
+      observedBrand: observation.observedBrand
+    });
     const confidenceReasons = [
       observation.matchStage === 'manual'
         ? 'Confirmé manuellement par l’utilisateur'
@@ -546,15 +592,6 @@ export async function persistDriveObservation(
   // refresh précédent n'a plus lieu d'être proposé.
   await clearNearMissCandidates(observation.storeKey, observation.productId);
   return candidateId;
-}
-
-export async function isDriveExtensionAvailable() {
-  try {
-    await getExtensionBridge().detectDriveExtension();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export async function runDriveRefresh(
@@ -630,6 +667,7 @@ export async function runDriveRefresh(
   const localStoreById = new Map(stores.map((store) => [store.id, store]));
   const productNameById = new Map(job.products.map((product) => [product.productId, product.name]));
   const productBarcodeById = new Map(job.products.map((product) => [product.productId, product.barcode]));
+  const productBrandById = new Map(job.products.map((product) => [product.productId, product.brand]));
   const outcomeKey = (storeKey: string, productId: string) => `${storeKey}:${productId}`;
   const observedOutcomeKeys = new Set(
     report.observations.map((observation) => outcomeKey(observation.storeKey, observation.productId))
@@ -664,7 +702,6 @@ export async function runDriveRefresh(
     const productBarcode = productBarcodeById.get(observation.productId);
     const candidateId = await persistDriveObservation(
       observation,
-      store,
       productBarcode,
       recoveredManualOutcomeKeys.has(outcomeKey(observation.storeKey, observation.productId))
     );
@@ -679,9 +716,29 @@ export async function runDriveRefresh(
       // format du même produit (`quantityDiffers`) ou un candidat distinct
       // qui a franchi le seuil sans être retenu — les deux méritent d'être
       // montrés, mais pas avec le même motif ni le même plafond de confiance.
+      // Un alternate n'est PAS un quasi-match : le collecteur ne le remonte
+      // que s'il a franchi le même seuil d'acceptation que le candidat retenu
+      // (deux tiers des mots attendus + recouvrement de catégorie, voir
+      // rankLeclercCandidates). L'étiqueter `uncertain` en dur le plafonnait
+      // pourtant à 64 % de confiance quel que soit son score : relevé sur le
+      // téléphone le 02/09, des alternates à 100 % de recouvrement de noms
+      // étaient marqués incertains, donc « à valider » à chaque comparatif.
+      // Ils suivent désormais exactement la même règle que le candidat
+      // principal. Les quasi-matchs proposés faute de correspondance fiable
+      // (`nearMisses`, plus bas) restent, eux, `uncertain` : ceux-là méritent
+      // vraiment une validation humaine.
       const alternateMatchType: ProductCandidate['matchType'] = alternate.quantityDiffers
         ? 'same_brand_different_format'
-        : 'uncertain';
+        : classifyMatchType({
+            // Volontairement sans étage : un alternate n'est jamais ni une
+            // confirmation humaine ni un rapprochement par code-barres, même
+            // quand le candidat principal de la même observation en est un.
+            matchStage: undefined,
+            barcodeConfirmed: false,
+            matchScore: alternateScore,
+            productBrand: productBrandById.get(observation.productId),
+            observedBrand: alternate.observedBrand
+          });
       await db.productCandidates.put({
         id: alternateId,
         productId: observation.productId,
@@ -868,70 +925,23 @@ export async function runDriveRefresh(
 }
 
 export type ManualCorrectionOutcome =
-  | { ok: true; candidateId: string; observedName: string; priceEuro: number }
+  | {
+      ok: true;
+      candidateId: string;
+      observedName: string;
+      priceEuro: number;
+      // Format lu sur la fiche (« 250 g », « 1 L »). Remonté jusqu'à
+      // l'appelant parce qu'un produit créé depuis un simple texte tapé n'a
+      // aucun format cible : sans lui, la comparaison au kilo entre les deux
+      // magasins ne peut pas se faire (voir unitPriceArbitration.ts).
+      observedQuantity?: number;
+      observedUnit?: DriveProductUnit;
+    }
   | { ok: false; reason: string };
 
-// Correction manuelle "Hyper U" : l'utilisateur a collé l'URL exacte de la
-// fiche produit (voir DriveManualOverrideEntry). Enregistre l'URL pour les
-// prochains rafraîchissements ET vérifie tout de suite en lançant un job
-// d'un seul produit/magasin — l'utilisateur voit immédiatement si la fiche
-// est la bonne plutôt que d'attendre le prochain "Actualiser les prix Drive".
-export async function runManualUrlCheck(
-  productId: string,
-  productName: string,
-  productBarcode: string | undefined,
-  storeKey: StoreKey,
-  productUrl: string
-): Promise<ManualCorrectionOutcome> {
-  const stores = await listSelectedStores();
-  const store = stores.find((candidate) => candidate.storeKey === storeKey);
-  if (!store) {
-    return { ok: false, reason: `Magasin ${storeKey} non configuré dans les réglages.` };
-  }
-
-  await saveManualUrlOverride(productId, storeKey, productUrl);
-
-  const bridge = getExtensionBridge();
-  try {
-    await bridge.detectDriveExtension();
-  } catch {
-    return { ok: false, reason: 'Extension Drive indisponible.' };
-  }
-
-  const job: DriveRefreshJobV1 = {
-    protocolVersion: DRIVE_PROTOCOL_VERSION,
-    jobId: crypto.randomUUID(),
-    requestedAt: new Date().toISOString(),
-    stores: [toDriveJobStore(store)],
-    products: [toDriveJobProduct({ id: productId, name: productName, barcode: productBarcode })],
-    manualUrlOverrides: { [storeKey]: { [productId]: productUrl } }
-  };
-
-  let response: DriveRefreshExtensionResponse;
-  try {
-    response = await bridge.startDriveRefresh(job);
-  } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : 'La vérification a échoué.' };
-  }
-  if (!response.accepted || !response.report) {
-    return { ok: false, reason: response.reason ?? 'La vérification a échoué.' };
-  }
-  const observation = response.report.observations[0];
-  if (!observation) {
-    const error = response.report.errors[0];
-    return {
-      ok: false,
-      reason: error ? `Impossible de lire cette fiche produit (${error.code}).` : "Impossible de lire cette fiche produit."
-    };
-  }
-  const candidateId = await persistDriveObservation(observation, store, productBarcode);
-  return { ok: true, candidateId, observedName: observation.observedName, priceEuro: observation.priceEuro };
-}
-
-// Correction manuelle "Leclerc" : ouvre les résultats de recherche pour ce
-// seul produit et attend que l'utilisateur tape la bonne carte directement
-// sur la page (voir DriveLivePickJobV1 — Leclerc n'a pas d'URL produit
-// stable, donc pas d'équivalent à runManualUrlCheck côté extension).
+// Correction manuelle (Leclerc et Hyper U) : ouvre le catalogue du magasin
+// pour ce seul produit et attend que l'utilisateur navigue jusqu'à la bonne
+// fiche/carte directement sur la page réelle (voir DriveLivePickJobV1).
 export async function runLivePick(
   productId: string,
   productName: string,
@@ -941,7 +951,13 @@ export async function runLivePick(
   // Retour explicite du 31/08 : quand un candidat est déjà connu (lien "Voir
   // le produit" du détail par magasin), y amène directement l'onglet plutôt
   // que l'accueil catalogue — voir le commentaire sur DriveLivePickJobV1.
-  startUrl?: string
+  startUrl?: string,
+  // Mots tapés par l'utilisateur dans l'écran d'ajout pour un produit tout
+  // neuf : sans candidat connu il n'y a pas de startUrl, et l'onglet
+  // s'ouvrirait sur un catalogue vide. L'extension saisit alors cette
+  // requête dans le champ de recherche du site avant de rendre la main
+  // (voir DriveJobProductV1.searchQuery).
+  searchQuery?: string
 ): Promise<ManualCorrectionOutcome> {
   const stores = await listSelectedStores();
   const store = stores.find((candidate) => candidate.storeKey === storeKey);
@@ -961,7 +977,12 @@ export async function runLivePick(
     jobId: crypto.randomUUID(),
     requestedAt: new Date().toISOString(),
     store: toDriveJobStore(store),
-    product: toDriveJobProduct({ id: productId, name: productName, barcode: productBarcode }),
+    product: toDriveJobProduct({
+      id: productId,
+      name: productName,
+      barcode: productBarcode,
+      ...(searchQuery ? { searchQuery } : {})
+    }),
     ...(startUrl ? { startUrl } : {})
   };
 
@@ -985,7 +1006,7 @@ export async function runLivePick(
       reason: error ? `Sélection non aboutie (${error.code}).` : 'Aucun produit sélectionné.'
     };
   }
-  const candidateId = await persistDriveObservation(observation, store, productBarcode);
+  const candidateId = await persistDriveObservation(observation, productBarcode);
   // Une sélection en direct produit un candidat `manual_override`, que la
   // recherche automatique n'a plus le droit de réécrire
   // (skipAutomaticOverwrite) : sans permalien mémorisé, son prix resterait
@@ -995,7 +1016,14 @@ export async function runLivePick(
   if (isRefreshableProductUrl(observation.productUrl, storeKey)) {
     await saveManualUrlOverride(productId, storeKey, observation.productUrl);
   }
-  return { ok: true, candidateId, observedName: observation.observedName, priceEuro: observation.priceEuro };
+  return {
+    ok: true,
+    candidateId,
+    observedName: observation.observedName,
+    priceEuro: observation.priceEuro,
+    ...(observation.observedQuantity !== undefined ? { observedQuantity: observation.observedQuantity } : {}),
+    ...(observation.observedUnit ? { observedUnit: observation.observedUnit } : {})
+  };
 }
 
 // Toutes les URLs produit ne sont pas rafraîchissables telles quelles : côté
@@ -1042,13 +1070,22 @@ function toDriveJobStore(store: UserStore) {
   };
 }
 
-function toDriveJobProduct(product: { id: string; name: string; brand?: string; barcode?: string; baseQuantity?: number; baseUnit?: string }): DriveJobProductV1 {
+function toDriveJobProduct(product: {
+  id: string;
+  name: string;
+  brand?: string;
+  barcode?: string;
+  baseQuantity?: number;
+  baseUnit?: string;
+  searchQuery?: string;
+}): DriveJobProductV1 {
   return {
     productId: product.id,
     name: product.name,
     ...(product.brand ? { brand: product.brand } : {}),
     ...(product.barcode ? { barcode: product.barcode } : {}),
     ...(product.baseQuantity !== undefined ? { baseQuantity: product.baseQuantity } : {}),
-    ...(product.baseUnit ? { baseUnit: product.baseUnit as DriveJobProductV1['baseUnit'] } : {})
+    ...(product.baseUnit ? { baseUnit: product.baseUnit as DriveJobProductV1['baseUnit'] } : {}),
+    ...(product.searchQuery ? { searchQuery: product.searchQuery } : {})
   };
 }

@@ -93,6 +93,8 @@ export const defaultSettings: UserSettings = {
   preferExactBarcode: true,
   allowPrivateLabelByDefault: true,
   experimentalAddToCart: false,
+  openFoodFactsNameSearch: false,
+  theme: 'system',
   maxPriceAgeDays: 7,
   updatedAt: seedDate
 };

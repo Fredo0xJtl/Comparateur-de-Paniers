@@ -1,6 +1,28 @@
+/* Palette en tokens (introduits le 04/09 lors du passage à un mode sombre) :
+   avant, chaque couleur était répétée en dur à chaque usage — impossible à
+   retoucher globalement, et aucun moyen de proposer un mode sombre sans
+   réécrire tout le fichier. Seules les couleurs les plus réutilisées
+   (bordures, fonds, texte, vert de marque) sont tokenisées ; quelques
+   teintes d'accent rares (alertes danger/warning à fond clair) restent en
+   dur — écart mineur assumé en mode sombre plutôt qu'un refactor complet
+   pour un gain marginal sur des éléments secondaires. */
 :root {
-  color: #172018;
-  background: #f7f7f2;
+  --color-text: #172018;
+  --color-text-faint: #66725f;
+  --color-bg-page: #f7f7f2;
+  --color-bg-page-gradient-top: rgba(247, 247, 242, 0.95);
+  --color-bg-page-gradient-bottom: rgba(239, 242, 236, 0.95);
+  --color-surface: #ffffff;
+  --color-surface-muted: #fbfcf8;
+  --color-border: #dfe4dc;
+  --color-border-strong: #cfd8ca;
+  --color-brand: #24583a;
+  --color-brand-hover: #1a3f2a;
+  --color-brand-text: #2d5a3d;
+  --color-danger-border: #e0b9b4;
+
+  color: var(--color-text);
+  background: var(--color-bg-page);
   font-family:
     Inter,
     ui-sans-serif,
@@ -13,6 +35,64 @@
   text-rendering: optimizeLegibility;
 }
 
+/* Mode sombre automatique (préférence système) — mêmes tokens, palette
+   réadaptée en gardant le vert de marque comme repère visuel. Les rares
+   couleurs d'accent non tokenisées (alertes) restent claires : léger écart
+   assumé plutôt qu'un refactor complet du fichier, voir commentaire ci-dessus. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #e7ece2;
+    --color-text-faint: #9aa693;
+    --color-bg-page: #12160f;
+    --color-bg-page-gradient-top: rgba(18, 22, 15, 0.95);
+    --color-bg-page-gradient-bottom: rgba(15, 19, 12, 0.95);
+    --color-surface: #1b2016;
+    --color-surface-muted: #1f2419;
+    --color-border: #2e362a;
+    --color-border-strong: #3a4433;
+    --color-brand: #3d7a54;
+    --color-brand-hover: #4a8f63;
+    --color-brand-text: #6fbd8a;
+    --color-danger-border: #7a3f38;
+  }
+}
+
+/* Choix explicite en Réglages (attribut posé par applyTheme() dans
+   settingsService.ts) — prime sur la préférence système ci-dessus, dans les
+   deux sens : permet de forcer le sombre sur un téléphone resté en clair, ou
+   l'inverse. */
+:root[data-theme='dark'] {
+  --color-text: #e7ece2;
+  --color-text-faint: #9aa693;
+  --color-bg-page: #12160f;
+  --color-bg-page-gradient-top: rgba(18, 22, 15, 0.95);
+  --color-bg-page-gradient-bottom: rgba(15, 19, 12, 0.95);
+  --color-surface: #1b2016;
+  --color-surface-muted: #1f2419;
+  --color-border: #2e362a;
+  --color-border-strong: #3a4433;
+  --color-brand: #3d7a54;
+  --color-brand-hover: #4a8f63;
+  --color-brand-text: #6fbd8a;
+  --color-danger-border: #7a3f38;
+}
+
+:root[data-theme='light'] {
+  --color-text: #172018;
+  --color-text-faint: #66725f;
+  --color-bg-page: #f7f7f2;
+  --color-bg-page-gradient-top: rgba(247, 247, 242, 0.95);
+  --color-bg-page-gradient-bottom: rgba(239, 242, 236, 0.95);
+  --color-surface: #ffffff;
+  --color-surface-muted: #fbfcf8;
+  --color-border: #dfe4dc;
+  --color-border-strong: #cfd8ca;
+  --color-brand: #24583a;
+  --color-brand-hover: #1a3f2a;
+  --color-brand-text: #2d5a3d;
+  --color-danger-border: #e0b9b4;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -22,8 +102,8 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(247, 247, 242, 0.95), rgba(239, 242, 236, 0.95)),
-    #f7f7f2;
+    linear-gradient(180deg, var(--color-bg-page-gradient-top), var(--color-bg-page-gradient-bottom)),
+    var(--color-bg-page);
 }
 
 a {
@@ -35,31 +115,49 @@ a {
 }
 
 .appHeader {
-  padding: 28px 20px 18px;
-  background: #ffffff;
-  border-bottom: 1px solid #dfe4dc;
+  padding: 14px 16px 12px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.appHeaderBrand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 720px;
+  margin-inline: auto;
+  text-align: left;
+}
+
+.appLogo {
+  flex-shrink: 0;
+  width: clamp(44px, 12vw, 64px);
+  height: clamp(44px, 12vw, 64px);
+  border-radius: 9px;
 }
 
 .appHeader h1 {
-  max-width: 720px;
-  margin: 4px auto 0;
-  font-size: clamp(1.65rem, 7vw, 2.8rem);
-  line-height: 1.05;
-}
-
-.appKicker,
-.eyebrow {
   margin: 0;
-  color: #53624f;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+  line-height: 1.15;
 }
 
-.appKicker {
-  max-width: 720px;
-  margin-inline: auto;
+.appTagline {
+  margin: 2px 0 0;
+  color: #53624f;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+@media (min-width: 560px) {
+  .appHeader {
+    padding: 20px 20px 18px;
+  }
+
+  .appHeaderBrand {
+    text-align: center;
+  }
 }
 
 .appMain {
@@ -127,9 +225,13 @@ a {
   line-height: 1.1;
 }
 
+.pageTitle {
+  text-align: center;
+}
+
 .lead {
   max-width: 62ch;
-  margin: 12px 0 0;
+  margin: 12px auto 0;
   color: #4c5648;
   font-size: 1rem;
   line-height: 1.55;
@@ -150,14 +252,14 @@ a {
 .statusGrid article {
   min-height: 88px;
   padding: 14px;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .statusGrid span {
   display: block;
-  color: #66725f;
+  color: var(--color-text-faint);
   font-size: 0.82rem;
 }
 
@@ -175,8 +277,8 @@ a {
 .productCard,
 .settingsPanel {
   padding: 18px;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -216,7 +318,7 @@ a {
 }
 
 .productCard dt {
-  color: #66725f;
+  color: var(--color-text-faint);
   font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -241,7 +343,7 @@ a {
   align-items: center;
   gap: 4px;
   padding: 22px 18px 20px;
-  background: #24583a;
+  background: var(--color-brand);
   border-radius: 14px;
   text-align: center;
 }
@@ -257,7 +359,7 @@ a {
 
 .savingsHeroAmount {
   margin: 2px 0 0;
-  color: #ffffff;
+  color: var(--color-surface);
   font-size: 2.6rem;
   font-weight: 800;
   line-height: 1;
@@ -297,14 +399,14 @@ a {
 .comparisonMetrics article {
   min-height: 88px;
   padding: 14px;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .comparisonMetrics span {
   display: block;
-  color: #66725f;
+  color: var(--color-text-faint);
   font-size: 0.82rem;
 }
 
@@ -316,7 +418,7 @@ a {
 
 .comparisonMetrics p {
   margin: 8px 0 0;
-  color: #66725f;
+  color: var(--color-text-faint);
   font-size: 0.82rem;
   line-height: 1.35;
 }
@@ -326,8 +428,8 @@ a {
   gap: 8px;
   font-weight: 700;
   padding: 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -353,7 +455,7 @@ a {
   appearance: none;
   width: 28px;
   height: 28px;
-  background: #2d5a3d;
+  background: var(--color-brand-text);
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -362,7 +464,7 @@ a {
 .thresholdControl input[type="range"]::-moz-range-thumb {
   width: 28px;
   height: 28px;
-  background: #2d5a3d;
+  background: var(--color-brand-text);
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -371,13 +473,13 @@ a {
 
 .thresholdControl input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
-  background: #dfe4dc;
+  background: var(--color-border);
   border-radius: 3px;
 }
 
 .thresholdControl input[type="range"]::-moz-range-track {
   height: 6px;
-  background: #dfe4dc;
+  background: var(--color-border);
   border-radius: 3px;
   border: none;
 }
@@ -391,14 +493,14 @@ a {
   display: grid;
   gap: 12px;
   padding: 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .comparisonDecisionWarning {
   background: #fff7f4;
-  border-color: #e0b9b4;
+  border-color: var(--color-danger-border);
 }
 
 /* Correspondance seulement probable : l'avertissement porte maintenant une
@@ -409,7 +511,7 @@ a {
   gap: 8px;
   padding: 8px 10px;
   background: #fff7f4;
-  border: 1px solid #e0b9b4;
+  border: 1px solid var(--color-danger-border);
   border-radius: 6px;
 }
 
@@ -434,8 +536,8 @@ a {
 
 .coverageBreakdown {
   padding: 10px 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -590,10 +692,28 @@ a {
   color: #6b4a2f;
 }
 
+/* Une carte par alternate (nom + ses 3 actions) au lieu d'un empilement flex
+   horizontal de boutons/lien nus : signalé confus le 04/09 (lien "Voir la
+   fiche" perdu au milieu, pas de regroupement visuel par alternate). */
 .alternateQuantityButtons {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 8px;
+}
+
+.alternateQuantityCard {
+  display: grid;
   gap: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #cfa98a;
+  border-radius: 6px;
+}
+
+.alternateQuantityCardName {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #6b4a2f;
 }
 
 .alternateQuantityButton {
@@ -613,6 +733,26 @@ a {
   background: #fdf1e6;
 }
 
+/* Réglages secondaires d'une ligne à valider (magasin forcé, annuler un
+   choix de format) : repliés par défaut derrière "Options avancées" (retour
+   du 04/09 — trop de contrôles à plat rendaient la carte illisible), le
+   même patron que .scanInfoPanel ailleurs dans l'app. */
+.comparisonDecisionAdvanced {
+  border-top: 1px dashed var(--color-border-strong);
+  padding-top: 8px;
+}
+
+.comparisonDecisionAdvanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-faint);
+}
+
+.comparisonDecisionAdvanced > *:not(summary) {
+  margin-top: 8px;
+}
+
 .shoppingRows {
   display: grid;
   gap: 10px;
@@ -624,8 +764,8 @@ a {
   gap: 10px;
   align-items: center;
   padding: 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -649,7 +789,7 @@ a {
   width: 100%;
   padding: 0 12px;
   font: inherit;
-  border: 1px solid #cfd8ca;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   font-size: 1rem;
 }
@@ -675,8 +815,8 @@ a {
   flex-direction: column;
   gap: 6px;
   padding: 12px;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -687,7 +827,7 @@ a {
   align-items: center;
   padding: 12px;
   background: #fff7f4;
-  border: 1px solid #e0b9b4;
+  border: 1px solid var(--color-danger-border);
   border-radius: 8px;
 }
 
@@ -695,10 +835,10 @@ a {
   margin: 0;
   padding: 12px;
   overflow-x: auto;
-  color: #172018;
+  color: var(--color-text);
   white-space: pre-wrap;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -720,10 +860,10 @@ a {
   min-height: 44px;
   width: 100%;
   padding: 0 12px;
-  color: #172018;
+  color: var(--color-text);
   font: inherit;
-  background: #fbfcf8;
-  border: 1px solid #cfd8ca;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
 }
 
@@ -746,7 +886,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid #cfd8ca;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 12px;
   margin: 0;
@@ -764,14 +904,18 @@ a {
   gap: 10px;
 }
 
+.cardActionsCentered {
+  justify-content: center;
+}
+
 .primaryButton {
   min-height: 48px;
   padding: 12px 20px;
-  color: #ffffff;
+  color: var(--color-surface);
   font: inherit;
   font-weight: 800;
   font-size: 1rem;
-  background: #24583a;
+  background: var(--color-brand);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -780,7 +924,7 @@ a {
 }
 
 .primaryButton:active {
-  background: #1a3f2a;
+  background: var(--color-brand-hover);
 }
 
 .secondaryButton,
@@ -790,7 +934,7 @@ a {
   font: inherit;
   font-weight: 800;
   font-size: 1rem;
-  background: #ffffff;
+  background: var(--color-surface);
   border: 1px solid #bdc8b7;
   border-radius: 8px;
   cursor: pointer;
@@ -804,17 +948,28 @@ a {
 
 .dangerButton {
   color: #9f2f25;
-  border-color: #e0b9b4;
+  border-color: var(--color-danger-border);
 }
 
 .successButton {
-  color: #ffffff;
-  background: #24583a;
-  border-color: #24583a;
+  color: var(--color-surface);
+  background: var(--color-brand);
+  border-color: var(--color-brand);
 }
 
 .successButton:active {
-  background: #1a3f2a;
+  background: var(--color-brand-hover);
+}
+
+/* État intermédiaire "fiche trouvée automatiquement, pas encore confirmée
+   par un humain" — distinct du vert plein .successButton (choix humain
+   verrouillé) pour ne pas laisser croire qu'un contrôle a déjà eu lieu, mais
+   distinct aussi du bouton neutre (rien trouvé) : le liseré vert seul suffit
+   à indiquer "il y a déjà quelque chose ici". */
+.foundButton {
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+  border-width: 2px;
 }
 
 .buttonLink {
@@ -823,11 +978,11 @@ a {
   width: fit-content;
   place-items: center;
   padding: 12px 20px;
-  color: #24583a;
+  color: var(--color-brand);
   font-weight: 800;
   font-size: 1rem;
   text-decoration: none;
-  background: #ffffff;
+  background: var(--color-surface);
   border: 1px solid #bdc8b7;
   border-radius: 8px;
   transition: background 0.2s;
@@ -858,7 +1013,7 @@ a {
 .scanPreview {
   width: 100%;
   aspect-ratio: 16 / 8;
-  background: #172018;
+  background: var(--color-text);
   border-radius: 8px;
   display: block;
   object-fit: cover;
@@ -879,7 +1034,7 @@ a {
   justify-content: center;
   font-size: 4rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--color-surface);
   background: rgba(45, 138, 82, 0.85);
   border-radius: 8px;
   animation: scanSuccessPop 0.35s ease-out;
@@ -887,8 +1042,8 @@ a {
 
 .advancedScanControls {
   padding: 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin-top: 12px;
 }
@@ -896,7 +1051,7 @@ a {
 .advancedScanControls summary {
   cursor: pointer;
   font-weight: 700;
-  color: #2d5a3d;
+  color: var(--color-brand-text);
   padding: 8px;
   margin: -8px;
   padding-left: 0;
@@ -907,11 +1062,11 @@ a {
 }
 
 .advancedScanControls summary:hover {
-  color: #1a3f2a;
+  color: var(--color-brand-hover);
 }
 
 .advancedScanControls[open] {
-  background: #ffffff;
+  background: var(--color-surface);
   border-color: #9fc8ab;
 }
 
@@ -923,8 +1078,8 @@ a {
 
 .scanInfoPanel {
   padding: 12px;
-  background: #fbfcf8;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin-top: 12px;
 }
@@ -932,7 +1087,7 @@ a {
 .scanInfoPanel summary {
   cursor: pointer;
   font-weight: 700;
-  color: #2d5a3d;
+  color: var(--color-brand-text);
   padding: 8px;
   margin: -8px;
   padding-left: 0;
@@ -940,17 +1095,103 @@ a {
 }
 
 .scanInfoPanel summary:hover {
-  color: #1a3f2a;
+  color: var(--color-brand-hover);
 }
 
 .scanInfoPanel[open] {
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .scanInfoPanel[open] > :not(summary) {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #dfe4dc;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Bandeaux "Articles de la liste" / "Produits favoris" (page Liste) : même
+   mécanique déroulante que .scanInfoPanel, mais un résumé plus proche d'une
+   carte cliquable (fond, coins arrondis, flèche animée, badge de compte) —
+   le texte seul de .scanInfoPanel se noyait dans le pageStack ici, où les
+   deux bandeaux sont les seuls éléments du panneau. */
+.shoppingListPanel {
+  margin-top: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.shoppingListPanel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  margin: 0;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: var(--color-brand-text);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.shoppingListPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.shoppingListPanel summary::before {
+  content: '▸';
+  margin-right: 10px;
+  transition: transform 0.15s ease;
+  color: #6b7c66;
+}
+
+.shoppingListPanel[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.shoppingListPanel summary:hover,
+.shoppingListPanel summary:focus-visible {
+  background: #f1f5ec;
+  border-color: #c7d3c0;
+}
+
+.shoppingListPanel[open] summary {
+  border-radius: 10px 10px 0 0;
+  border-bottom-color: transparent;
+}
+
+.shoppingListPanel[open] > :not(summary) {
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+}
+
+.shoppingListPanelFavorites summary {
+  background: #eef6ec;
+  border-color: #cfe3c8;
+}
+
+.shoppingListPanelFavorites summary:hover,
+.shoppingListPanelFavorites summary:focus-visible {
+  background: #e3f0de;
+}
+
+.countBadge {
+  min-width: 24px;
+  padding: 2px 8px;
+  background: var(--color-brand);
+  color: var(--color-surface);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .scanPageLayout {
@@ -1010,8 +1251,8 @@ a {
   gap: 4px;
   padding: 8px max(8px, env(safe-area-inset-right)) 8px
     max(8px, env(safe-area-inset-left));
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid #d8ded4;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .navLink {
@@ -1019,7 +1260,7 @@ a {
   display: grid;
   place-items: center;
   padding: 6px 4px;
-  color: #4e5a49;
+  color: var(--color-text-faint);
   font-size: 0.82rem;
   font-weight: 700;
   text-align: center;
@@ -1027,21 +1268,21 @@ a {
   border-radius: 8px;
 }
 
-@media (max-width: 400px) {
-  /* "Comparer"/"Réglages" are single unbreakable words wider than their 1/6
-     grid column on narrow phones (measured ~65px content in a ~57px cell at
-     the base font-size) — the browser has no break point inside the word,
-     so the text just overflows into the neighbouring nav link instead.
-     Shrinking the font a bit here is cleaner than force-breaking mid-word. */
+@media (max-width: 430px) {
+  /* En dessous de ~430px, "Comparer"/"Réglages" (mots longs, pas de point de
+     coupure) débordent de leur 1/6 de colonne à taille normale. La nav reste
+     sur une seule ligne de 6 colonnes : police et espacement réduits pour
+     que chaque lien tienne dans sa colonne sans défilement ni retour à la
+     ligne. */
   .navLink {
-    font-size: 0.68rem;
     padding: 6px 2px;
+    font-size: 0.72rem;
   }
 }
 
 .navLinkActive {
-  color: #ffffff;
-  background: #24583a;
+  color: var(--color-surface);
+  background: var(--color-brand);
 }
 
 @media (min-width: 760px) {
@@ -1050,7 +1291,7 @@ a {
     top: 0;
     max-width: 760px;
     margin: 0 auto;
-    border: 1px solid #d8ded4;
+    border: 1px solid var(--color-border);
     border-top: 0;
     border-radius: 0 0 8px 8px;
   }
@@ -1078,8 +1319,8 @@ a {
   width: 100%;
   max-width: 560px;
   margin-top: 24px;
-  background: #f7f7f2;
-  border: 1px solid #dfe4dc;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(23, 32, 24, 0.28);
 }
@@ -1095,7 +1336,7 @@ a {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 18px;
-  border-bottom: 1px solid #dfe4dc;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .modalHeader h3 {
@@ -1107,10 +1348,10 @@ a {
   min-width: 36px;
   min-height: 36px;
   padding: 0;
-  color: #172018;
+  color: var(--color-text);
   font-size: 1rem;
-  background: #ffffff;
-  border: 1px solid #dfe4dc;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   cursor: pointer;
 }
@@ -1128,4 +1369,56 @@ a {
   .modalContent {
     margin-top: 8px;
   }
+}
+
+/* Ajout d'un produit par son nom (ScanPage) — placé en tête de l'écran
+   d'ajout parce que c'est le geste le plus fréquent : on rachète bien plus
+   souvent un produit déjà connu qu'on n'en découvre un. Les propositions
+   sont des boutons pleine largeur, pas une liste déroulante : sur un
+   téléphone, en magasin, la cible tactile prime sur la densité. */
+.quickAddField {
+  display: grid;
+  gap: 8px;
+  color: #2d3a2a;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.quickAddField input {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 12px;
+  color: var(--color-text);
+  font: inherit;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+}
+
+.quickAddResults {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quickAddResults button {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+}
+
+.quickAddResults small {
+  color: #5d6858;
+  font-weight: 400;
+}
+
+.quickAddStores {
+  display: grid;
+  gap: 8px;
+}
+
+.quickAddStores button {
+  min-height: 44px;
 }

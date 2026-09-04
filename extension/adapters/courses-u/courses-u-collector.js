@@ -1282,6 +1282,16 @@ export async function livePickCoursesUProduct({
       await runCookieConsentDismissal(scripting, tabId);
       await wait(600, signal);
     }
+  } else if (product.searchQuery) {
+    // Symétrique du chemin Leclerc (voir livePickLeclercProduct) : produit
+    // tout neuf ajouté depuis l'écran d'ajout, aucun candidat connu, donc on
+    // pré-remplit la recherche du site avec les mots tapés par
+    // l'utilisateur. Best-effort : `startCoursesUSearch` rend
+    // { started: false } quand il ne trouve pas le champ, et on continue
+    // quand même — la navigation libre puis le bouton flottant de validation
+    // restent le vrai mécanisme.
+    await run(scripting, tabId, startCoursesUSearch, [product]);
+    await wait(1_200, signal);
   }
 
   onProgress({

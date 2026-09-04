@@ -1,0 +1,17 @@
+{
+  "//": "Surcharges Firefox appliquees PAR-DESSUS extension/manifest.json par tools/build-firefox-extension.mjs. Ne dupliquer ici AUCUNE cle deja presente dans le manifest de base (permissions, content_scripts, version...) : c'est cette duplication qui a fait diverger les deux fichiers. Voir tools/firefox-manifest.mjs.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "drive-price-splitter@fredo0xjtl.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {
   findDevOriginContentScriptMatches,
   findPortedContentScriptMatches
 } from './validate-extension.mjs';
+import { FIREFOX_OVERLAY_FILENAME, readFirefoxManifest } from './firefox-manifest.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const sourceDir = join(root, 'extension');
@@ -33,22 +34,33 @@ const DEV_EXTENSION_ID = 'drive-price-splitter-dev@fredo0xjtl.github.io';
 const devPortArg = process.argv.find((arg) => arg.startsWith('--dev-port='));
 const devPort = devPortArg ? devPortArg.slice('--dev-port='.length) : null;
 
+// --dev-explicit-only : n'ajoute QUE les origines de DRIVE_DEV_ORIGINS, sans
+// localhost/127.0.0.1 ni les IP LAN de la machine qui build. Pour un paquet
+// destiné à un usage durable sur une origine de confiance précise (ex. un
+// serveur hébergé en continu) où les origines locales du poste de build
+// n'ont aucune utilité et n'ont pas à figurer dans les permissions.
+const explicitOriginsOnly = process.argv.includes('--dev-explicit-only');
+
 // Dossier de sortie distinct par port pour permettre de charger les deux
 // paquets simultanément dans le navigateur (about:debugging / web-ext) sans
 // que l'un écrase le fichier de l'autre sur disque.
 const outDir = join(root, 'dist', devPort ? `extension-firefox-${devPort}` : 'extension-firefox');
 
-export function configureBridgeOrigins(manifest, { dev, port = null, lanAddresses = [] }) {
+export function configureBridgeOrigins(manifest, { dev, port = null, lanAddresses = [], explicitOnly = false }) {
   if (!Array.isArray(manifest.content_scripts)) {
     return manifest;
   }
   const devHostPermissions = dev
     ? [
-        'http://localhost/*',
-        'https://localhost/*',
-        'http://127.0.0.1/*',
-        'https://127.0.0.1/*',
-        ...lanAddresses.map((address) => `https://${address}/*`),
+        ...(explicitOnly
+          ? []
+          : [
+              'http://localhost/*',
+              'https://localhost/*',
+              'http://127.0.0.1/*',
+              'https://127.0.0.1/*',
+              ...lanAddresses.map((address) => `https://${address}/*`)
+            ]),
         ...readExplicitDevOrigins().map((origin) => stripPort(origin))
       ]
     : [];
@@ -61,10 +73,10 @@ export function configureBridgeOrigins(manifest, { dev, port = null, lanAddresse
   // 01/09, introduite en même temps que --dev-port). La restriction au port
   // exact se fait donc à l'exécution, via BRIDGE_ORIGIN_PATTERNS
   // (extension/shared/bridge-origins.js), jamais dans le manifest.
-  const devMatches = dev ? devOriginPatterns({ suffix: '', lanAddresses }) : [];
+  const devMatches = dev ? devOriginPatterns({ suffix: '', lanAddresses, explicitOnly }) : [];
   return {
     ...manifest,
-    name: dev ? `${manifest.name} (dev${port ? ` :${port}` : ''})` : manifest.name,
+    name: dev ? buildDevName(manifest.name, port) : manifest.name,
     browser_specific_settings: dev
       ? {
           ...(manifest.browser_specific_settings ?? {}),
@@ -97,7 +109,7 @@ export function configureBridgeOrigins(manifest, { dev, port = null, lanAddresse
 // liste d'exécution (BRIDGE_ORIGIN_PATTERNS) et '' pour les match patterns du
 // manifest, qui n'acceptent aucun port — une seule source pour les deux, pour
 // qu'elles ne puissent pas diverger.
-function devOriginPatterns({ suffix, lanAddresses }) {
+function devOriginPatterns({ suffix, lanAddresses, explicitOnly = false }) {
   // Une origine explicite (DRIVE_DEV_ORIGINS) peut être tapée avec son port
   // par l'utilisateur. Ce port est légitime dans la liste d'exécution, mais
   // interdit dans un match pattern : on le retire pour le manifest, sinon la
@@ -105,11 +117,15 @@ function devOriginPatterns({ suffix, lanAddresses }) {
   // normale.
   const explicit = readExplicitDevOrigins();
   return [
-    `http://localhost${suffix}/*`,
-    `https://localhost${suffix}/*`,
-    `http://127.0.0.1${suffix}/*`,
-    `https://127.0.0.1${suffix}/*`,
-    ...lanAddresses.map((address) => `https://${address}${suffix}/*`),
+    ...(explicitOnly
+      ? []
+      : [
+          `http://localhost${suffix}/*`,
+          `https://localhost${suffix}/*`,
+          `http://127.0.0.1${suffix}/*`,
+          `https://127.0.0.1${suffix}/*`,
+          ...lanAddresses.map((address) => `https://${address}${suffix}/*`)
+        ]),
     ...(suffix ? explicit : explicit.map((origin) => stripPort(origin)))
   ];
 }
@@ -120,17 +136,33 @@ function stripPort(pattern) {
   return pattern.replace(new RegExp(':[0-9]+/'), '/');
 }
 
+// Le champ `name` du schéma WebExtension est limité à 45 caractères — limite
+// imposée dès `web-ext lint` (bloquant pour toute soumission AMO). Le nom de
+// base actuel (41) ne laisse quasiment aucune marge pour le suffixe "(dev
+// :<port>)" : troncature automatique du nom de base plutôt qu'une limite
+// fixe câblée à la main, pour rester correct quel que soit le nom de base ou
+// la longueur du port à l'avenir.
+const MAX_EXTENSION_NAME_LENGTH = 45;
+
+function buildDevName(baseName, port) {
+  const suffix = ` (dev${port ? ` :${port}` : ''})`;
+  const budget = MAX_EXTENSION_NAME_LENGTH - suffix.length;
+  if (budget <= 0) return `${baseName}${suffix}`.slice(0, MAX_EXTENSION_NAME_LENGTH);
+  const base = baseName.length > budget ? `${baseName.slice(0, Math.max(0, budget - 1))}…` : baseName;
+  return `${base}${suffix}`;
+}
+
 // Liste blanche appliquée à l'exécution par le service worker (voir
 // isAllowedSender). C'est ELLE qui restreint un paquet --dev-port au port
 // demandé : le manifest, lui, laisse le navigateur injecter le bridge sur
 // tout localhost/LAN puisqu'il ne sait pas filtrer par port.
-export function computeBridgeOriginPatterns(manifest, { dev, port = null, lanAddresses = [] }) {
+export function computeBridgeOriginPatterns(manifest, { dev, port = null, lanAddresses = [], explicitOnly = false }) {
   const manifestMatches = (manifest.content_scripts ?? [])
     .flatMap((entry) => entry.matches ?? [])
     .filter((match) => !DEV_ORIGIN_PATTERN.test(match));
   if (!dev) return [...new Set(manifestMatches)];
   const suffix = port ? `:${port}` : '';
-  return [...new Set([...manifestMatches, ...devOriginPatterns({ suffix, lanAddresses })])];
+  return [...new Set([...manifestMatches, ...devOriginPatterns({ suffix, lanAddresses, explicitOnly })])];
 }
 
 function readExplicitDevOrigins() {
@@ -156,29 +188,22 @@ function run() {
     filter: (path) => {
       const base = path.split(/[\\/]/).pop() ?? '';
       if (base.endsWith('.test.js')) return false;
-      if (base === 'manifest.firefox.json') return false;
+      if (base === FIREFOX_OVERLAY_FILENAME) return false;
       return true;
     }
   });
 
-  const firefoxManifest = JSON.parse(readFileSync(join(sourceDir, 'manifest.firefox.json'), 'utf8'));
-  const chromeManifest = JSON.parse(readFileSync(join(sourceDir, 'manifest.json'), 'utf8'));
-
-  // Les deux manifests avaient dérivé (0.5.24 côté Firefox contre 0.5.29 côté
-  // Chrome), ce qui rend le numéro affiché dans la page d'options — et celui
-  // renvoyé au PWA par DRIVE_CONNECTOR_STATUS — faux sur Firefox. Le manifest
-  // Chrome fait foi.
-  if (firefoxManifest.version !== chromeManifest.version) {
-    console.warn(
-      `Version Firefox (${firefoxManifest.version}) alignée sur celle du manifest Chrome (${chromeManifest.version}).`
-    );
-    firefoxManifest.version = chromeManifest.version;
-  }
+  // Un seul manifest de base (extension/manifest.json) + les surcharges
+  // Firefox : la version, les permissions et les content scripts ne peuvent
+  // plus diverger entre les deux fichiers, ce qui arrivait quand le manifest
+  // Firefox en était une copie complète (voir tools/firefox-manifest.mjs).
+  const firefoxManifest = readFirefoxManifest(sourceDir);
 
   const manifest = configureBridgeOrigins(firefoxManifest, {
     dev: keepDevOrigins,
     port: devPort,
-    lanAddresses: getLanAddresses()
+    lanAddresses: getLanAddresses(),
+    explicitOnly: explicitOriginsOnly
   });
 
   // Garde fail-closed (audit sécurité du 30/08, MEDIUM #4) : si le filtrage
@@ -216,7 +241,8 @@ function run() {
   const originPatterns = computeBridgeOriginPatterns(firefoxManifest, {
     dev: keepDevOrigins,
     port: devPort,
-    lanAddresses: getLanAddresses()
+    lanAddresses: getLanAddresses(),
+    explicitOnly: explicitOriginsOnly
   });
   writeFileSync(
     join(outDir, 'shared', 'bridge-origins.js'),

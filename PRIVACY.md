@@ -13,15 +13,18 @@ Comparateur de Paniers est conçu comme une application web locale (PWA) de comp
 
 Il n'y a ni serveur, ni compte, ni mesure d'audience, ni télémétrie, ni rapport de plantage. L'application n'envoie jamais une liste de courses, un panier, un historique de prix ou une sauvegarde où que ce soit.
 
-Trois chemins réseau sont autorisés, et seulement trois. `npm run privacy:check` fait respecter cette frontière dans l'intégration continue : toute primitive réseau hors des modules déclarés, ou tout appel vers un hôte non déclaré, fait échouer la validation.
+Quatre chemins réseau sont autorisés, vers trois hôtes seulement. `npm run privacy:check` fait respecter cette frontière dans l'intégration continue : toute primitive réseau hors des modules déclarés, ou tout appel vers un hôte non déclaré, fait échouer la validation.
 
 | Chemin | Hôte | Ce qui quitte l'appareil | Quand |
 | --- | --- | --- | --- |
 | Coquille PWA | même origine uniquement | rien | le service worker récupère les ressources statiques |
 | Recherche par code-barres | `world.openfoodfacts.org` | le code-barres scanné (EAN), seul | uniquement si le code scanné n'est pas déjà dans la base locale |
+| Recherche de fiche par son nom | `world.openfoodfacts.org` | les mots tapés dans le champ « Nom du produit » | désactivé par défaut ; uniquement si l'option est activée dans les réglages **et** que l'utilisateur touche « Trouver la fiche produit » |
 | Recherche de magasin | `nominatim.openstreetmap.org` | le nom de ville saisi par l'utilisateur, et l'enseigne | uniquement quand l'utilisateur lance une recherche de magasin |
 
-Ces deux services tiers sont publics, gratuits et sans compte ; aucun ne reçoit d'identifiant, de liste, de prix ni de panier. Comme pour toute requête HTTP, ils voient en revanche l'adresse IP de l'appareil et peuvent la journaliser selon leurs propres politiques ([Open Food Facts](https://world.openfoodfacts.org/privacy), [Fondation OpenStreetMap](https://osmfoundation.org/wiki/Privacy_Policy)). Les recherches de magasin sont limitées à une requête par seconde, conformément aux conditions d'usage de Nominatim.
+Ces services tiers sont publics, gratuits et sans compte ; aucun ne reçoit d'identifiant, de liste, de prix ni de panier. Comme pour toute requête HTTP, ils voient en revanche l'adresse IP de l'appareil et peuvent la journaliser selon leurs propres politiques ([Open Food Facts](https://world.openfoodfacts.org/privacy), [Fondation OpenStreetMap](https://osmfoundation.org/wiki/Privacy_Policy)). Les recherches de magasin sont limitées à une requête par seconde, conformément aux conditions d'usage de Nominatim.
+
+La recherche d'une fiche par son nom est le seul chemin qui transmette du texte saisi librement, plus révélateur qu'un code-barres isolé : elle est donc désactivée par défaut, ne se déclenche jamais pendant la frappe, et le bouton qui la lance n'apparaît même pas tant que l'option reste désactivée. Son intérêt est de récupérer le code-barres du produit, qui permet ensuite d'identifier sa fiche en magasin avec certitude.
 
 Toutes les autres fonctions — comparaison, listes, historique, sauvegardes — fonctionnent entièrement hors ligne.
 

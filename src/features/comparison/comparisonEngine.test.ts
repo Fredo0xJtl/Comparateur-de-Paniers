@@ -862,6 +862,46 @@ describe('comparisonEngine', () => {
       expect(decision?.selectedCandidateId).toBe('cand-solo-hyperu');
       expect(decision?.price).toBe(1.8);
     });
+
+    it('un candidat confirmé manuellement est retenu face à une proposition automatique moins chère non validée', () => {
+      const automaticLeclerc = {
+        id: 'cand-beurre-leclerc-auto',
+        productId: 'prod-beurre',
+        storeKey: 'leclerc' as const,
+        name: 'Beurre proposé automatiquement chez Leclerc',
+        matchType: 'exact_barcode' as const,
+        barcode: '3017620422003',
+        confidenceScore: 100,
+        confidenceReasons: ['code-barres identique'],
+        createdAt: '2026-08-27T08:00:00.000Z',
+        updatedAt: '2026-08-27T08:00:00.000Z'
+      };
+      const manualHyperU = makeManualCandidate('cand-beurre-hyperu-manual', 'prod-beurre', 'hyperu');
+      const priceSnapshots = [
+        makeManualSnapshot('price-beurre-leclerc', automaticLeclerc.id, 'leclerc', 1.5),
+        makeManualSnapshot('price-beurre-hyperu', manualHyperU.id, 'hyperu', 2.2)
+      ];
+
+      const result = compareShoppingList({
+        rows: [
+          {
+            ...manualRowFor('prod-beurre', 'item-beurre'),
+            product: { ...manualRowFor('prod-beurre', 'item-beurre').product, barcode: '3017620422003' }
+          }
+        ],
+        candidates: [automaticLeclerc, manualHyperU],
+        priceSnapshots,
+        savingThresholdEuro: 3,
+        autoDecisionMinConfidence: 90,
+        maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+      });
+
+      const decision = result.decisions.find((d) => d.itemId === 'item-beurre');
+      expect(decision?.requiresValidation).toBe(false);
+      expect(decision?.selectedStoreKey).toBe('hyperu');
+      expect(decision?.selectedCandidateId).toBe('cand-beurre-hyperu-manual');
+      expect(decision?.price).toBe(2.2);
+    });
   });
 
   describe('blocage sur quantité > 1 à format non garanti (étape 4 du plan de fiabilisation)', () => {

@@ -25,6 +25,10 @@ const absoluteUrlPattern = /https?:\/\/([a-z0-9.-]+)/gi;
 //
 //   - world.openfoodfacts.org : base de codes-barres ouverte, reçoit
 //     uniquement l'EAN scanné.
+//     Le même hôte sert aussi la recherche par nom (/cgi/search.pl), qui
+//     reçoit les mots tapés par l'utilisateur — et UNIQUEMENT sur un geste
+//     explicite : cette fonction est désactivée par défaut (réglage
+//     openFoodFactsNameSearch) et ne se déclenche jamais à la frappe.
 //   - nominatim.openstreetmap.org : géocodage, reçoit uniquement la ville
 //     saisie manuellement par l'utilisateur.
 //

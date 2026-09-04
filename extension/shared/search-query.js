@@ -30,6 +30,13 @@ export function stripPackagingNoiseFromSearchName(name) {
     // Multiplicateur isolé restant ("5x") une fois la phrase poids/portion
     // qui l'entourait déjà retirée ci-dessus.
     .replace(/\b\d+\s*x\b/gi, ' ')
+    // Même multiplicateur écrit dans l'autre sens ("x6"), forme fréquente
+    // chez Open Food Facts collée au poids : "... sans nitrite x6-210g". Le
+    // poids est bien retiré plus haut, mais le multiplicateur restait dans la
+    // requête — mesuré le 02/09 sur le vrai site, l'étape "nom simplifié" du
+    // jambon HERTA partait avec un "x6-" traînant en fin de requête. Le `\b`
+    // interdit de matcher au milieu d'un mot ("Box 4" reste intact).
+    .replace(/\bx\s*\d+\b/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
   // Un segment délimité par " - " (convention Open Food Facts courante :
@@ -44,7 +51,12 @@ export function stripPackagingNoiseFromSearchName(name) {
     // ci-dessus, ex: "PRESIDENT - 30% de matière grasse - 200g"), ne doit
     // laisser aucune trace dans le résultat final.
     .filter((segment) => segment && !/^-+$/.test(segment))
-    .join(' - ');
+    .join(' - ')
+    // Tiret resté en bordure quand ce qui l'entourait a été retiré SANS
+    // espace autour ("... nitrite x6-210g" laisse "... nitrite -") : le
+    // découpage ci-dessus ne le voit pas, faute d'espace des deux côtés.
+    .replace(/^\s*-+\s*|\s*-+\s*$/g, '')
+    .trim();
 }
 
 // Si le nom du produit contient déjà la marque telle quelle (fréquent avec

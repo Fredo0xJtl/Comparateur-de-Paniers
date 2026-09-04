@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ComparisonDecision, type StoreCoverage, type StoreCoverageLine } from '../features/comparison/comparisonEngine';
 import { type ProductCandidate } from '../types/domain';
 import { runLivePick } from '../features/drive-bridge/driveRefreshService';
-import { CoverageBreakdown, ValidationPanel } from './ComparePage';
+import { CoverageBreakdown, ValidationPanel, findCartFillMismatches } from './ComparePage';
 
 // Automock (pas de factory partielle) : ComparePage.tsx importe plusieurs
 // autres symboles de ce module (runDriveRefresh, downloadDriveDiagnostic,
@@ -50,9 +50,17 @@ describe('ValidationPanel', () => {
     expect(screen.getByText('Aucun produit à valider pour cette comparaison.')).toBeTruthy();
   });
 
-  it('propose un quasi-match incertain avec un bouton "Choisir" et un bouton "Aucun de ceux-là"', () => {
+  it('propose un quasi-match incertain avec un bouton "Choisir" et un bouton "Aucun de ceux-là"', async () => {
+    vi.mocked(runLivePick).mockResolvedValue({
+      ok: true,
+      candidateId: 'cand-nearmiss-1',
+      observedName: 'Produit approchant',
+      priceEuro: 3.5
+    });
+
     const onForceCandidate = vi.fn();
     const onRejectCandidate = vi.fn();
+    const onCandidateConfirmed = vi.fn();
     const decision = makeDecision({
       alternates: [
         {
@@ -74,20 +82,35 @@ describe('ValidationPanel', () => {
         forcedCandidateIdByItemId={new Map()}
         onForceStore={vi.fn()}
         onForceCandidate={onForceCandidate}
-        onCandidateConfirmed={vi.fn()}
+        onCandidateConfirmed={onCandidateConfirmed}
         onRejectCandidate={onRejectCandidate}
       />
     );
 
     expect(screen.getByText('Riz basmati')).toBeTruthy();
     expect(screen.getByText(/Aucune correspondance fiable/)).toBeTruthy();
+    expect(screen.getByText(/Produit approchant/)).toBeTruthy();
 
-    const chooseButton = screen.getByText(/Choisir : Produit approchant/);
+    const chooseButton = screen.getByText('Choisir celui-ci');
     fireEvent.click(chooseButton);
     expect(onForceCandidate).toHaveBeenCalledWith('item-1', 'cand-nearmiss-1');
 
-    const link = screen.getByText('Voir la fiche') as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('https://www.leclercdrive.fr/produit/proche-1');
+    // "Voir la fiche" n'est plus un simple lien : c'est le même bouton que
+    // "Voir le produit" ailleurs — il ouvre la fiche ET arme l'overlay de
+    // validation de l'extension (via runLivePick avec startUrl).
+    fireEvent.click(screen.getByText('Voir la fiche'));
+    await waitFor(() => {
+      expect(onCandidateConfirmed).toHaveBeenCalledWith('item-1');
+    });
+    expect(runLivePick).toHaveBeenCalledWith(
+      'product-1',
+      'Riz basmati',
+      undefined,
+      'leclerc',
+      expect.any(Function),
+      'https://www.leclercdrive.fr/produit/proche-1',
+      undefined
+    );
 
     fireEvent.click(screen.getByText('Aucun de ceux-là'));
     expect(onRejectCandidate).toHaveBeenCalledWith('cand-nearmiss-1');
@@ -152,24 +175,83 @@ describe('ValidationPanel', () => {
 
     fireEvent.click(screen.getByText('Choisir sur la page Leclerc'));
 
+    // Aucun startUrl connu ici : la recherche du site doit être pré-remplie
+    // (et lancée) avec le nom du produit, pas laissée vide.
+    expect(runLivePick).toHaveBeenCalledWith(
+      'product-1',
+      'Riz basmati 1kg',
+      undefined,
+      'leclerc',
+      expect.any(Function),
+      undefined,
+      'Riz basmati 1kg'
+    );
+
     await waitFor(() => {
       expect(onCandidateConfirmed).toHaveBeenCalledWith('item-1');
     });
     expect(onForceCandidate).not.toHaveBeenCalled();
   });
 
-  // Retour explicite du 31/08 : si un magasin a déjà un candidat fiable
-  // (recherche automatique réussie, ou pick manuel d'un rendu précédent), le
-  // bouton "Choisir sur la page ..." doit le signaler comme déjà réglé
-  // plutôt que de laisser croire qu'il reste une action à faire — pendant
-  // que l'autre magasin, lui, reste actionnable normalement.
-  it('signale un magasin déjà couvert (storeCandidateIds) comme "✓ Déjà trouvé", sans toucher au bouton de l\'autre magasin', () => {
+  it("signale (sans le confirmer) un magasin seulement trouvé automatiquement, tant qu'il n'a pas été validé sur la page", () => {
     const decision = makeDecision({ storeCandidateIds: { hyperu: 'cand-hyperu-1' } });
 
     render(
       <ValidationPanel
         decisions={[decision]}
         productNameById={new Map([['product-1', 'Riz basmati 1kg']])}
+        candidateById={new Map([
+          [
+            'cand-hyperu-1',
+            {
+              id: 'cand-hyperu-1',
+              productId: 'product-1',
+              storeKey: 'hyperu',
+              name: 'Riz proposé chez Hyper U',
+              matchType: 'exact_barcode',
+              confidenceScore: 100,
+              confidenceReasons: []
+            }
+          ]
+        ])}
+        forcedStoreKeyByItemId={new Map()}
+        forcedCandidateIdByItemId={new Map()}
+        onForceStore={vi.fn()}
+        onForceCandidate={vi.fn()}
+        onCandidateConfirmed={vi.fn()}
+        onRejectCandidate={vi.fn()}
+      />
+    );
+
+    // Pas encore un choix humain verrouillé (vert plein), mais pas non plus
+    // un bouton blanc identique à "rien trouvé" : une fiche existe déjà pour
+    // Hyper U, le bouton doit le dire pour inviter à la vérifier.
+    expect(screen.queryByText('✓ Déjà trouvé chez Hyper U')).toBeNull();
+    expect(screen.getByText('✓ Fiche trouvée chez Hyper U — à confirmer')).toBeTruthy();
+    expect(screen.getByText('Choisir sur la page Leclerc')).toBeTruthy();
+  });
+
+  it('affiche en vert un magasin déjà validé manuellement sur la page', () => {
+    const decision = makeDecision({ storeCandidateIds: { hyperu: 'cand-hyperu-1' } });
+
+    render(
+      <ValidationPanel
+        decisions={[decision]}
+        productNameById={new Map([['product-1', 'Riz basmati 1kg']])}
+        candidateById={new Map([
+          [
+            'cand-hyperu-1',
+            {
+              id: 'cand-hyperu-1',
+              productId: 'product-1',
+              storeKey: 'hyperu',
+              name: 'Riz validé chez Hyper U',
+              matchType: 'manual_override',
+              confidenceScore: 100,
+              confidenceReasons: []
+            }
+          ]
+        ])}
         forcedStoreKeyByItemId={new Map()}
         forcedCandidateIdByItemId={new Map()}
         onForceStore={vi.fn()}
@@ -181,7 +263,6 @@ describe('ValidationPanel', () => {
 
     expect(screen.getByText('✓ Déjà trouvé chez Hyper U')).toBeTruthy();
     expect(screen.queryByText('Choisir sur la page Hyper U')).toBeNull();
-    expect(screen.getByText('Choisir sur la page Leclerc')).toBeTruthy();
   });
 
   // Étape 4 du plan de fiabilisation : une ligne bloquée pour quantité > 1 à
@@ -386,14 +467,18 @@ describe('CoverageBreakdown', () => {
     });
     // 6e argument (startUrl) undefined : aucun candidat connu pour cette
     // ligne notFound, rien à passer comme point de départ — comportement
-    // d'origine (accueil catalogue) inchangé.
+    // d'origine (accueil catalogue) inchangé. 7e argument (searchQuery) posé
+    // au nom du produit : sans lui, un onglet resté sur une autre fiche
+    // laissait confirmer silencieusement le mauvais produit (voir le
+    // commentaire sur runLivePick dans ComparePage.tsx).
     expect(runLivePick).toHaveBeenCalledWith(
       'product-2',
       'Riz basmati',
       undefined,
       'leclerc',
       expect.any(Function),
-      undefined
+      undefined,
+      'Riz basmati'
     );
   });
 
@@ -435,13 +520,62 @@ describe('CoverageBreakdown', () => {
     await waitFor(() => {
       expect(onCandidateConfirmed).toHaveBeenCalledWith('item-1');
     });
+    // 7e argument (searchQuery) undefined ici : un startUrl est déjà connu,
+    // pas besoin de pré-remplir une recherche.
     expect(runLivePick).toHaveBeenCalledWith(
       'product-1',
       'Riz basmati',
       undefined,
       'leclerc',
       expect.any(Function),
-      'https://www.leclercdrive.fr/produit/1'
+      'https://www.leclercdrive.fr/produit/1',
+      undefined
     );
+  });
+});
+
+// Défaut trouvé le 02/09 en préparant une vraie commande : quand l'extension
+// ajoute au panier un produit DIFFÉRENT de celui validé au comparatif, la
+// ligne porte `added: true` — elle ne remontait donc jamais dans la liste des
+// échecs, et l'écran annonçait un panier conforme. Seul le fichier de
+// diagnostic téléchargé le mentionnait. Ces cas doivent être détectables.
+describe('findCartFillMismatches', () => {
+  const attendu = (pickedName?: string) =>
+    new Map([['prod-1', { expectedName: 'Lait demi-écrémé', pickedName, pickedUrl: undefined }]]);
+
+  it('signale un ajout dont le nom diffère du produit validé', () => {
+    const ecarts = findCartFillMismatches(
+      [{ productId: 'prod-1', added: true, matchedName: 'Lait entier UHT 1 L' }],
+      attendu('Lait demi-écrémé UHT 1 L')
+    );
+    expect(ecarts).toHaveLength(1);
+    expect(ecarts[0].matchedName).toBe('Lait entier UHT 1 L');
+  });
+
+  it('ne signale rien quand le produit ajouté est bien celui validé, à la casse et aux espaces près', () => {
+    expect(
+      findCartFillMismatches(
+        [{ productId: 'prod-1', added: true, matchedName: '  LAIT demi-écrémé   UHT 1 L ' }],
+        attendu('Lait demi-écrémé UHT 1 L')
+      )
+    ).toEqual([]);
+  });
+
+  it("reste muet quand l'écart n'est pas vérifiable (aucun nom validé, ou magasin qui ne dit pas ce qu'il a ajouté)", () => {
+    expect(
+      findCartFillMismatches([{ productId: 'prod-1', added: true, matchedName: 'Autre chose' }], attendu(undefined))
+    ).toEqual([]);
+    expect(
+      findCartFillMismatches([{ productId: 'prod-1', added: true }], attendu('Lait demi-écrémé UHT 1 L'))
+    ).toEqual([]);
+  });
+
+  it("ignore les échecs, déjà couverts par la liste des produits à ajouter à la main", () => {
+    expect(
+      findCartFillMismatches(
+        [{ productId: 'prod-1', added: false, matchedName: 'Autre chose' }],
+        attendu('Lait demi-écrémé UHT 1 L')
+      )
+    ).toEqual([]);
   });
 });

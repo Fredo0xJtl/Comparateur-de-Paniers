@@ -20,7 +20,17 @@ describe('PWA assets', () => {
         expect.objectContaining({
           src: '/icon.svg',
           type: 'image/svg+xml',
-          purpose: 'any maskable'
+          purpose: 'any'
+        }),
+        expect.objectContaining({
+          src: '/icon-512.png',
+          type: 'image/png',
+          purpose: 'any'
+        }),
+        expect.objectContaining({
+          src: '/icon-maskable-512.png',
+          type: 'image/png',
+          purpose: 'maskable'
         })
       ])
     );

@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { FIREFOX_OVERLAY_FILENAME, extensionSourceDir, readFirefoxManifest } from './firefox-manifest.mjs';
 
 const allowedPermissions = new Set(['tabs', 'storage', 'scripting', 'notifications']);
 const forbiddenPermissions = new Set([
@@ -39,7 +41,7 @@ export function validateExtensionManifest(manifest) {
   const worker = manifest.background;
   // Chrome/Chromium MV3 uses background.service_worker; Firefox's MV3
   // implementation doesn't support that key the same way and uses
-  // background.scripts instead (manifest.firefox.json) — both must be
+  // background.scripts instead (voir les surcharges Firefox) — both must be
   // accepted since this validator runs against both manifest flavors.
   const hasValidBackgroundEntry =
     worker?.service_worker === 'background/service-worker.js' ||
@@ -61,9 +63,8 @@ export function validateExtensionManifest(manifest) {
 // IP privée/le même port local injecter le bridge Drive
 // (extension/bridge/pwa-bridge.js) et parler au service worker avec la
 // session réelle de l'utilisateur — voir extension/shared/origin-allowlist.js.
-// Les manifests SOURCE (extension/manifest.json,
-// extension/manifest.firefox.json) contiennent ces origines par design (pour
-// le dev server local/LAN) : ce contrôle ne s'applique donc qu'au manifest
+// Les manifests SOURCE (extension/manifest.json et ses surcharges Firefox)
+// contiennent ces origines par design (pour le dev server local/LAN) : ce contrôle ne s'applique donc qu'au manifest
 // réellement construit (dist/extension-firefox/manifest.json), jamais aux
 // sources — voir tools/build-firefox-extension.mjs.
 export const DEV_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+)(:\d+)?\//i;
@@ -86,21 +87,24 @@ export function findDevOriginContentScriptMatches(manifest) {
   return (manifest?.content_scripts ?? []).flatMap((entry) => entry.matches ?? []).filter((match) => DEV_ORIGIN_PATTERN.test(match));
 }
 
-// Checking only extension/manifest.json used to give false confidence: the
-// Firefox build (tools/build-firefox-extension.mjs) actually ships
-// extension/manifest.firefox.json as the deployed manifest.json, entirely
-// ignoring this one for that target. A permission or content script added
-// to only one of the two would pass this check while silently missing from
-// what's on the phone — confirmed the hard way (the "notifications"
-// permission was added here but not to manifest.firefox.json, so the
-// progress notification never actually worked despite this check passing).
-const MANIFEST_FILES = ['../extension/manifest.json', '../extension/manifest.firefox.json'];
+// Contrôler le seul extension/manifest.json donnait une fausse confiance : le
+// paquet Firefox livré est le manifest FUSIONNÉ (base + surcharges), et c'est
+// lui qui part sur le téléphone. On valide donc les deux : la base, et le
+// résultat réellement embarqué. Tant que le manifest Firefox était une copie
+// complète, une permission ajoutée d'un seul côté passait ce contrôle tout en
+// manquant sur le téléphone — vécu avec la permission « notifications », dont
+// la notification de progression n'a jamais fonctionné.
+function manifestsToValidate() {
+  const extensionDir = extensionSourceDir();
+  return [
+    ['extension/manifest.json', JSON.parse(readFileSync(join(extensionDir, 'manifest.json'), 'utf8'))],
+    [`extension/manifest.json + ${FIREFOX_OVERLAY_FILENAME}`, readFirefoxManifest(extensionDir)]
+  ];
+}
 
 function run() {
   let hasErrors = false;
-  for (const relativePath of MANIFEST_FILES) {
-    const manifestPath = fileURLToPath(new URL(relativePath, import.meta.url));
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  for (const [relativePath, manifest] of manifestsToValidate()) {
     const errors = validateExtensionManifest(manifest);
     if (errors.length > 0) {
       hasErrors = true;

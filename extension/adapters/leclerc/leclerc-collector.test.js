@@ -100,6 +100,75 @@ describe('livePickLeclercProduct — transport du prix unitaire', () => {
   });
 });
 
+// Ajout d'un produit par son nom depuis la PWA : l'utilisateur a tapé sa
+// propre formulation, l'extension la saisit dans le champ de recherche du
+// site avant de lui rendre la main. La navigation reste libre ensuite, et la
+// validation passe toujours par le bouton flottant de la fiche produit.
+describe('livePickLeclercProduct — recherche pré-remplie', () => {
+  function buildScripting(calls) {
+    return {
+      executeScript: vi.fn(async ({ func, args }) => {
+        calls.push({ name: func.name, args });
+        const result =
+          func.name === 'dismissCookieConsentOnPage'
+            ? { dismissed: true }
+            : func.name === 'readPublicLeclercPageState'
+              ? {
+                  hostname: 'fd12-courses.leclercdrive.fr',
+                  pathname: '/magasin-1',
+                  hasCaptcha: false,
+                  hasSiteError: false,
+                  hasStorePrompt: false,
+                  hasCatalog: true
+                }
+              : func.name === 'startProductSearchOnPage'
+                ? { started: true }
+                : func.name === 'readLeclercPickOnPage'
+                  ? {
+                      name: 'Beurre President demi-sel 250g',
+                      priceEuro: 2.45,
+                      productUrl: 'https://fd12-courses.leclercdrive.fr/fiche-produits-1.aspx'
+                    }
+                  : undefined;
+        return [{ result }];
+      })
+    };
+  }
+
+  async function runLivePick(product) {
+    const calls = [];
+    const result = await livePickLeclercProduct({
+      scripting: buildScripting(calls),
+      tabs: {},
+      tabId: 1,
+      job: { jobId: 'job-search' },
+      store: { storeKey: 'leclerc', localStoreId: 'store-1' },
+      products: [product],
+      signal: new AbortController().signal
+    });
+    return { calls, result };
+  }
+
+  it('saisit exactement les mots tapés par l’utilisateur, pas le nom du produit', async () => {
+    const { calls, result } = await runLivePick({
+      productId: 'prod-1',
+      name: 'beurre demi-sel',
+      searchQuery: 'beurre demi-sel'
+    });
+
+    const search = calls.find((call) => call.name === 'startProductSearchOnPage');
+    expect(search).toBeDefined();
+    expect(search.args[0]).toEqual({ name: 'beurre demi-sel', brand: '' });
+    expect(result.observations[0]).toMatchObject({ observedName: 'Beurre President demi-sel 250g' });
+  });
+
+  it('ne lance aucune recherche automatique sans requête de l’utilisateur', async () => {
+    const { calls } = await runLivePick({ productId: 'prod-1', name: 'Beurre' });
+
+    expect(calls.some((call) => call.name === 'startProductSearchOnPage')).toBe(false);
+  });
+});
+
 // Régression réelle (2026-08-27, diagnostic live) : deux produits scannés
 // portaient "Carrefour" comme marque (Open Food Facts) — le stage de
 // recherche brand_only soumettait alors "Carrefour" chez Leclerc, qui ne

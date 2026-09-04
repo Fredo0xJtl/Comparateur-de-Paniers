@@ -194,3 +194,111 @@ describe('runDriveRefresh — persistance des quasi-matchs (nearMisses)', () => 
     expect(snapshot?.price).toBe(2.5);
   });
 });
+
+// Relevé sur le téléphone le 02/09 : des candidats alternatifs affichés avec
+// 100 % de recouvrement de noms étaient stockés en `uncertain`, donc plafonnés
+// à 64 % de confiance et redemandés en validation à chaque comparatif. Un
+// alternate n'est pourtant PAS un quasi-match : le collecteur ne le remonte
+// qu'après avoir franchi le même seuil d'acceptation que le candidat retenu.
+describe('runDriveRefresh — étiquette des candidats alternatifs', () => {
+  beforeEach(async () => {
+    await db.delete();
+    await db.open();
+    vi.clearAllMocks();
+    await db.userStores.add({
+      id: 'store-1',
+      storeKey: 'leclerc',
+      displayName: 'Leclerc test',
+      osmId: 1,
+      osmType: 'node',
+      latitude: 1,
+      longitude: 1,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z'
+    });
+  });
+
+  function reportWithAlternate(alternate: Record<string, unknown>) {
+    return {
+      accepted: true,
+      report: {
+        jobId: 'job-1',
+        status: 'completed' as const,
+        errors: [],
+        observations: [
+          {
+            protocolVersion: 1,
+            jobId: 'job-1',
+            productId: product.id,
+            storeKey: 'leclerc',
+            localStoreId: 'store-1',
+            externalStoreId: 'ext-1',
+            observedName: 'Thé glacé pêche 1,5 L',
+            matchStage: 'name',
+            matchScore: 0.95,
+            priceEuro: 2.1,
+            available: true,
+            productUrl: 'https://www.leclercdrive.fr/produit/the-1',
+            observedAt: '2026-09-02T00:00:00.000Z',
+            evidence: 'official_drive_page',
+            alternates: [alternate]
+          }
+        ]
+      }
+    };
+  }
+
+  const alternateId = `price-leclerc-${product.id}-alt-0`;
+
+  it('un alternate au même format et à la bonne marque n’est plus classé incertain', async () => {
+    mockStartDriveRefresh.mockResolvedValue(
+      reportWithAlternate({
+        observedName: 'Thé glacé pêche 1,5 L (autre référence)',
+        observedBrand: product.brand,
+        matchScore: 1,
+        priceEuro: 2.4,
+        productUrl: 'https://www.leclercdrive.fr/produit/the-2'
+      })
+    );
+
+    await runDriveRefresh([makeRow()]);
+
+    const candidate = await db.productCandidates.get(alternateId);
+    expect(candidate?.isAlternate).toBe(true);
+    expect(candidate?.matchType).toBe('equivalent_brand');
+    expect(candidate?.confidenceScore).toBe(100);
+  });
+
+  it('un alternate faible reste incertain', async () => {
+    mockStartDriveRefresh.mockResolvedValue(
+      reportWithAlternate({
+        observedName: 'Boisson approchante',
+        observedBrand: 'Autre marque',
+        matchScore: 0.5,
+        priceEuro: 1.4,
+        productUrl: 'https://www.leclercdrive.fr/produit/the-3'
+      })
+    );
+
+    await runDriveRefresh([makeRow()]);
+
+    expect((await db.productCandidates.get(alternateId))?.matchType).toBe('uncertain');
+  });
+
+  it('un alternate d’un autre format garde son étiquette de format différent', async () => {
+    mockStartDriveRefresh.mockResolvedValue(
+      reportWithAlternate({
+        observedName: 'Thé glacé pêche 2 L',
+        observedBrand: product.brand,
+        matchScore: 1,
+        quantityDiffers: true,
+        priceEuro: 3.1,
+        productUrl: 'https://www.leclercdrive.fr/produit/the-4'
+      })
+    );
+
+    await runDriveRefresh([makeRow()]);
+
+    expect((await db.productCandidates.get(alternateId))?.matchType).toBe('same_brand_different_format');
+  });
+});

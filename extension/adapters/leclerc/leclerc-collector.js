@@ -1020,6 +1020,26 @@ export async function livePickLeclercProduct({
   if (job.startUrl) {
     const navigation = await runPageAction(scripting, tabId, navigateToLeclercUrlOnPage, [job.startUrl]);
     if (navigation?.started) await wait(600, signal);
+  } else if (product.searchQuery) {
+    // Produit tout neuf ajouté depuis l'écran d'ajout de la PWA : aucun
+    // candidat connu, donc aucun startUrl, mais l'utilisateur a tapé sa
+    // propre formulation (« beurre demi-sel »). On la saisit pour lui dans
+    // le champ de recherche du site au lieu de le laisser la retaper au
+    // doigt sur un téléphone.
+    //
+    // Ce n'est PAS le retour de l'ancienne recherche automatique retirée
+    // ci-dessus : celle-là envoyait le nom Open Food Facts brut, souvent
+    // trop bruité pour un moteur qui applique un ET strict sur tous les
+    // mots, et son échec (« aucun produit trouvé ») bloquait justement la
+    // correction manuelle. Ici la requête vient de l'utilisateur, et l'échec
+    // ne coûte rien : la page reste utilisable, la navigation demeure
+    // entièrement libre (champ de recherche du site, catégories) et le
+    // bouton flottant de validation continue d'être réarmé à chaque cycle
+    // par waitForLeclercPick, quelle que soit la page affichée.
+    await runPageAction(scripting, tabId, startProductSearchOnPage, [
+      { name: product.searchQuery, brand: '' }
+    ]);
+    await wait(1_200, signal);
   }
   onProgress({
     storeKey: store.storeKey,

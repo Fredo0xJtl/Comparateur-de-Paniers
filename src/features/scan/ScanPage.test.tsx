@@ -34,6 +34,16 @@ vi.mock('./productCacheService', () => ({
   setCachedProduct: vi.fn(),
   formatCacheAge: vi.fn(() => "à l'instant")
 }));
+// Sans ce mock, l'effet de montage de ScanPage appelait le vrai
+// listSelectedStores(), qui ouvre la base Dexie/IndexedDB : une entrée/sortie
+// réelle, non attendue par les tests, dont la promesse pouvait retomber
+// (setConfiguredStores, re-render) à n'importe quel moment du scénario — y
+// compris après le démontage, donc pendant le test suivant. Aucun test de ce
+// fichier ne porte sur les magasins configurés : la liste vide suffit et rend
+// le montage entièrement déterministe.
+vi.mock('../stores/storeLocatorService', () => ({
+  listSelectedStores: vi.fn(async () => [])
+}));
 
 import { listProducts } from '../../db/seed';
 import { createProduct, markProductUsed } from '../products/productService';
@@ -64,7 +74,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
 }
 
 async function submitBarcode(barcode: string) {
-  const input = screen.getByLabelText('Saisie manuelle');
+  const input = screen.getByLabelText('Code-barres saisi à la main');
   fireEvent.change(input, { target: { value: barcode } });
   fireEvent.click(screen.getByRole('button', { name: 'Rechercher en local' }));
 }
@@ -77,9 +87,36 @@ function renderScanPage() {
   );
 }
 
+// Base locale simulée : `listProducts` renvoie ce que la base contient à
+// l'instant de l'appel, au lieu d'une suite figée de valeurs.
+//
+// La cascade de `mockResolvedValueOnce` utilisée auparavant dépendait du
+// NOMBRE exact d'appels (lecture au montage, lecture du scan, relecture après
+// création). Un appel de plus ou de moins — re-render, effet asynchrone,
+// lecture résiduelle du test précédent — décalait toute la séquence d'un
+// cran : le scan recevait alors le produit AVANT sa création et empruntait le
+// chemin « produit déjà présent en base locale » (ScanPage.tsx) au lieu du
+// chemin Open Food Facts, faisant échouer le test par intermittence. Ici,
+// ni l'ordre ni le nombre d'appels ne comptent : seul compte le contenu.
+function fakeLocalProductDb(initial: Product[] = []) {
+  const rows = [...initial];
+  mockListProducts.mockImplementation(async () => [...rows]);
+  return {
+    insert(product: Product) {
+      rows.push(product);
+    }
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // `clearAllMocks` ne vide que l'historique d'appels : les implémentations
+  // et les valeurs `...Once` non consommées survivraient au test suivant et
+  // décaleraient ses lectures. On remet donc à zéro les deux mocks qui
+  // portent l'état de la base locale.
+  mockListProducts.mockReset();
+  mockCreateProduct.mockReset();
 });
 
 describe('ScanPage — ajout direct au scan (sans confirmation)', () => {
@@ -106,9 +143,15 @@ describe('ScanPage — ajout direct au scan (sans confirmation)', () => {
     const barcode = '9999999999999';
     const created = makeProduct({ id: 'prod-off-new', barcode, name: 'Nouveau produit', brand: 'MarqueX' });
     mockGetCachedProduct.mockResolvedValue(null);
-    mockListProducts.mockResolvedValueOnce([]).mockResolvedValueOnce([created]);
+    // Base locale vide au départ : le produit n'y apparaît qu'une fois
+    // `createProduct` appelé, exactement comme en vrai. Le test échouerait
+    // donc si ScanPage cessait de créer le produit avant de le relire.
+    const localDb = fakeLocalProductDb();
     mockLookupOff.mockResolvedValue({ name: 'Nouveau produit', brand: 'MarqueX' });
-    mockCreateProduct.mockResolvedValue({ isValid: true, errors: {}, normalized: {} as never });
+    mockCreateProduct.mockImplementation(async () => {
+      localDb.insert(created);
+      return { isValid: true, errors: {}, normalized: {} as never };
+    });
 
     renderScanPage();
     await submitBarcode(barcode);
@@ -206,12 +249,15 @@ describe('ScanPage — ajout direct au scan (sans confirmation)', () => {
       resolveLookup = resolve;
     });
     mockGetCachedProduct.mockResolvedValue(null);
-    mockListProducts.mockResolvedValueOnce([]).mockResolvedValueOnce([created]);
+    const localDb = fakeLocalProductDb();
     mockLookupOff.mockReturnValue(lookupPromise);
-    mockCreateProduct.mockResolvedValue({ isValid: true, errors: {}, normalized: {} as never });
+    mockCreateProduct.mockImplementation(async () => {
+      localDb.insert(created);
+      return { isValid: true, errors: {}, normalized: {} as never };
+    });
 
     renderScanPage();
-    const input = screen.getByLabelText('Saisie manuelle');
+    const input = screen.getByLabelText('Code-barres saisi à la main');
     fireEvent.change(input, { target: { value: barcode } });
     const submitButton = screen.getByRole('button', { name: 'Rechercher en local' });
     // Deux clics synchrones, avant que le premier setBarcodeBusy(true) n'ait
