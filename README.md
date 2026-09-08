@@ -53,7 +53,17 @@ Pour signaler un problème, [ouvrez un ticket](https://github.com/Fredo0xJtl/Com
 - le **code d'erreur** affiché, s'il y en a un — c'est une suite de lettres majuscules du genre `CART_LOGIN_REQUIRED` ;
 - le magasin concerné (l'enseigne suffit, pas la ville).
 
-C'est suffisant dans la grande majorité des cas. Si le fichier complet devient nécessaire, on vous le demandera, et vous l'enverrez en privé — jamais dans le ticket public.
+C'est suffisant dans la grande majorité des cas.
+
+### Si le fichier complet est nécessaire
+
+Il arrive qu'un problème reste incompréhensible sans le diagnostic entier. Dans ce cas, envoyez-le **en privé**, jamais dans le ticket public :
+
+**Comparateur-de-Paniers-Dev@protonmail.com**
+
+Ce que devient ce fichier : il sert uniquement à comprendre et corriger le problème signalé, il n'est ni partagé, ni publié, ni utilisé pour autre chose, et il est supprimé une fois le problème traité.
+
+Cette adresse sert aussi si vous préférez poser une question sans passer par un ticket public.
 
 ### Pour une faille de sécurité
 

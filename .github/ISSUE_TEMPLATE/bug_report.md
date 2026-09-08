@@ -14,7 +14,8 @@ incomplet vaut mieux que pas de signalement.
 ⚠ N'ENVOYEZ PAS ici le fichier de diagnostic complet. Il contient le nom des
 produits de votre liste et les adresses des fiches consultées. Les quelques
 informations demandées ci-dessous suffisent presque toujours. Si le fichier
-complet devient nécessaire, on vous le demandera pour un envoi privé.
+complet devient nécessaire, envoyez-le en privé à
+Comparateur-de-Paniers-Dev@protonmail.com — jamais dans ce ticket.
 -->
 
 ## Ce qui s'est passé
