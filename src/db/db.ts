@@ -12,7 +12,7 @@ import {
   type UserStore,
   type ValidatedBasket
 } from '../types/domain';
-import { DB_NAME, DB_VERSION, dbSchema } from './schema';
+import { DB_NAME, DB_VERSION, dbSchema, type SyncCursorEntry } from './schema';
 import type { CachedProductEntry } from '../features/scan/productCacheService';
 
 export class DrivePriceSplitterDb extends Dexie {
@@ -28,6 +28,7 @@ export class DrivePriceSplitterDb extends Dexie {
   validatedBaskets!: Table<ValidatedBasket, string>;
   productCache!: Table<CachedProductEntry, string>;
   driveManualOverrides!: Table<DriveManualOverrideEntry, string>;
+  syncCursors!: Table<SyncCursorEntry, string>;
 
   constructor() {
     super(DB_NAME);

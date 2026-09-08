@@ -1,5 +1,14 @@
-const CACHE_NAME = 'drive-price-splitter-static-v3';
-const STATIC_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
+const CACHE_NAME = 'drive-price-splitter-static-v4';
+
+// Ce fichier est copié tel quel depuis public/ : Vite ne le transforme pas et
+// ne peut donc pas y réécrire le chemin public (`base` dans vite.config.ts).
+// Les chemins sont donc dérivés de l'emplacement RÉEL du service worker :
+// '/' quand l'application est servie à la racine (dev, `vite preview`,
+// Raspberry), '/Comparateur-de-Paniers/' sur GitHub Pages. En dur, '/'
+// pointait vers la racine du domaine — un fichier qui n'existe pas là-bas, et
+// une application hors ligne cassée.
+const BASE_PATH = new URL('./', self.location).pathname;
+const STATIC_ASSETS = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}icon.svg`];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -70,7 +79,7 @@ async function networkFirst(request) {
     // Hors ligne : servir la dernière version connue du shell, sinon la
     // racine (une navigation vers une route interne doit retomber sur le
     // shell, c'est une SPA).
-    const cached = (await caches.match(request)) ?? (await caches.match('/'));
+    const cached = (await caches.match(request)) ?? (await caches.match(BASE_PATH));
     if (cached) {
       return cached;
     }

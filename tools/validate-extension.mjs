@@ -18,6 +18,30 @@ const allowedHosts = new Set([
   'https://*.coursesu.com/*'
 ]);
 
+// Permissions d'hôtes FACULTATIVES : jamais accordées à l'installation.
+// Firefox ne les demande que lorsque l'utilisateur déclare lui-même
+// l'adresse de son installation auto-hébergée dans la page d'options, et
+// uniquement pour cette adresse-là (`permissions.request`). Elles sont
+// nécessaires parce qu'une adresse privée (ordinateur, NAS, Raspberry Pi,
+// domaine personnel) ne peut par définition pas figurer dans un paquet
+// distribué — voir extension/shared/custom-origins.js.
+//
+// La liste est verrouillée ici pour deux raisons :
+//   1. `*://*/*` — donc http:// sur n'importe quel hôte — n'a jamais à
+//      apparaître : une page servie en clair peut être imitée par quiconque
+//      s'interpose sur le réseau (Wi-Fi partagé, DNS ou ARP détourné), et
+//      hériterait alors du droit de piloter l'extension dans la session
+//      authentifiée de l'utilisateur sur les sites des enseignes. http:// est
+//      donc restreint à la boucle locale, où ce risque n'existe pas.
+//   2. Une permission facultative ajoutée à la légère se voit dans la fiche
+//      AMO et durcit la revue. Toute évolution doit être un choix conscient,
+//      pas une ligne ajoutée en passant.
+const allowedOptionalHosts = new Set([
+  'https://*/*',
+  'http://localhost/*',
+  'http://127.0.0.1/*'
+]);
+
 export function validateExtensionManifest(manifest) {
   const errors = [];
   if (!manifest || typeof manifest !== 'object' || manifest.manifest_version !== 3) {
@@ -36,6 +60,20 @@ export function validateExtensionManifest(manifest) {
     if (!allowedHosts.has(host)) {
       errors.push(`Hôte interdit : ${host}`);
     }
+  }
+
+  for (const host of manifest.optional_host_permissions ?? []) {
+    if (!allowedOptionalHosts.has(host)) {
+      errors.push(`Hôte facultatif interdit : ${host}`);
+    }
+  }
+
+  // Une permission facultative ne sert à rien si rien ne peut la demander :
+  // seule la page d'options appelle `permissions.request`. Sans elle, la
+  // liste ci-dessus ne serait qu'une permission affichée sur la fiche AMO
+  // sans contrepartie fonctionnelle — exactement ce qu'une revue reproche.
+  if ((manifest.optional_host_permissions ?? []).length > 0 && !manifest.options_page && !manifest.options_ui) {
+    errors.push('optional_host_permissions déclaré sans page d’options pour les demander');
   }
 
   const worker = manifest.background;
@@ -67,7 +105,16 @@ export function validateExtensionManifest(manifest) {
 // contiennent ces origines par design (pour le dev server local/LAN) : ce contrôle ne s'applique donc qu'au manifest
 // réellement construit (dist/extension-firefox/manifest.json), jamais aux
 // sources — voir tools/build-firefox-extension.mjs.
-export const DEV_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+)(:\d+)?\//i;
+// Les noms en `.local` (mDNS/Bonjour) sont ici pour la même raison que
+// localhost et les IP privées : ils ne désignent jamais une origine publique,
+// seulement une machine du réseau où se trouve l'utilisateur. Laisser
+// un nom `.local` dans un paquet distribué reviendrait à injecter le bridge Drive chez n'importe quel
+// utilisateur dont le réseau contient une machine annonçant ce nom — un nom
+// mDNS n'est ni réservé ni authentifié, n'importe qui sur le même LAN peut le
+// revendiquer. Ajouté le 05/09 : le manifest source portait cette origine avec
+// une note « à retirer avant toute soumission AMO publique », c'est-à-dire un
+// geste manuel qu'aucun contrôle n'imposait.
+export const DEV_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+|[a-z0-9-]+(\.[a-z0-9-]+)*\.local)(:\d+)?\//i;
 
 // Un match pattern WebExtension n'accepte AUCUN numéro de port. Firefox le
 // refuse (bugs Mozilla 1362809 / 1468162) et rejette l'entrée content_scripts

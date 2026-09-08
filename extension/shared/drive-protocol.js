@@ -379,3 +379,31 @@ export function validateDriveLivePickJob(value, now = Date.now()) {
   }
   return value;
 }
+
+// Import des listes/favoris déjà enregistrés sur le compte de l'utilisateur
+// (Leclerc « produits habituels », Courses U « Mes Listes »). Ajouté sans
+// toucher aux validateurs ci-dessus : ce job ne partage rien avec eux (aucun
+// produit à chercher, aucun panier touché, une seule page à lire).
+//
+// `listUrl` (optionnel) : URL d'une liste précise, choisie par l'utilisateur
+// quand son compte Courses U en porte plusieurs (code COURSESU_PICK_LIST).
+// Elle revient de la page elle-même, donc jamais reprise sur confiance —
+// isOfficialProductUrl impose HTTPS et l'hôte de l'enseigne, et le runner la
+// revalide une seconde fois avant d'ouvrir l'onglet.
+export function validateDriveListImportJob(value, now = Date.now()) {
+  if (
+    !isRecord(value) ||
+    value.protocolVersion !== DRIVE_PROTOCOL_VERSION ||
+    !isIdentifier(value.jobId) ||
+    !isIsoDate(value.requestedAt) ||
+    !isJobStore(value.store) ||
+    (value.listUrl !== undefined && !isOfficialProductUrl(value.listUrl, value.store.storeKey))
+  ) {
+    throw new Error("Tâche d'import de liste invalide");
+  }
+  const age = now - Date.parse(value.requestedAt);
+  if (age < -60_000 || age > DRIVE_JOB_MAX_AGE_MS) {
+    throw new Error("Tâche d'import de liste expirée");
+  }
+  return value;
+}

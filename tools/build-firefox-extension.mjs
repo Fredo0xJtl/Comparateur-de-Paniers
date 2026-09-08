@@ -22,7 +22,11 @@ const sourceDir = join(root, 'extension');
 // DEV_ORIGIN_PATTERN vit dans validate-extension.mjs (source unique) pour
 // que le filtrage ici et le contrôle post-build restent garantis identiques.
 const keepDevOrigins = process.argv.includes('--dev') || process.argv.some((arg) => arg.startsWith('--dev-port='));
-const DEV_EXTENSION_ID = 'drive-price-splitter-dev@fredo0xjtl.github.io';
+// Distinct de l'id gecko de base (manifest.firefox.overlay.json), qui est
+// désormais celui du VRAI module AMO (drive-price-splitter-dev@...) : un
+// build --dev ne doit jamais partager cet id, sinon Firefox/AMO confondent
+// un paquet de test local avec le module publié.
+const DEV_EXTENSION_ID = 'drive-price-splitter-localtest@fredo0xjtl.github.io';
 
 // Sans --dev-port, un build --dev parle à N'IMPORTE QUEL port localhost/LAN
 // (dev ET prod local confondus) : c'est le seul mode qui existait jusqu'ici,
@@ -124,6 +128,12 @@ function devOriginPatterns({ suffix, lanAddresses, explicitOnly = false }) {
           `https://localhost${suffix}/*`,
           `http://127.0.0.1${suffix}/*`,
           `https://127.0.0.1${suffix}/*`,
+          // Aucun nom d'hôte particulier n'est inscrit ici : une installation
+          // sur un NAS, un Raspberry Pi ou un serveur personnel se déclare
+          // depuis la page d'options du paquet de PRODUCTION (voir
+          // extension/shared/custom-origins.js), ce qui rend inutile un build
+          // spécial pour elle — et évite de faire figurer le nom d'une
+          // machine réelle dans un dépôt public.
           ...lanAddresses.map((address) => `https://${address}${suffix}/*`)
         ]),
     ...(suffix ? explicit : explicit.map((origin) => stripPort(origin)))

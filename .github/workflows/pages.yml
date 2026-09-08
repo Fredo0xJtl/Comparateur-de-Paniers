@@ -1,0 +1,105 @@
+# Publie l'application sur GitHub Pages.
+#
+# GitHub Pages sert un dépôt de projet sous un SOUS-CHEMIN
+# (`https://<compte>.github.io/<dépôt>/`) et non à la racine d'un domaine.
+# Le build doit donc connaître ce préfixe : c'est le rôle de `build:pages`
+# (voir tools/build-pages.mjs). Un `npm run build` ordinaire produirait des
+# chemins absolus et une page blanche.
+#
+# Ce workflow refait les vérifications avant de déployer plutôt que de faire
+# confiance à la CI : les deux tournent en parallèle sur un même push, et
+# rien ne garantirait sinon qu'une version dont les tests échouent ne parte
+# pas en ligne.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  # Permet aussi un déploiement manuel depuis l'onglet Actions, sans commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  # Jeton d'identité réclamé par actions/deploy-pages pour prouver à GitHub
+  # Pages que l'artefact vient bien de ce workflow.
+  id-token: write
+
+# Un seul déploiement à la fois. `cancel-in-progress: false` : un déploiement
+# déjà lancé va au bout, sinon Pages peut rester sur une version partielle.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Garde-fou. L'extension Firefox n'installe son pont avec l'application
+      # que sur les adresses listées dans `content_scripts.matches` de son
+      # manifest. Si l'adresse réellement publiée n'y figure pas — un tiret à
+      # la place d'un souligné suffit — le site se charge normalement, mais le
+      # remplissage automatique du panier, la fonction principale, reste mort
+      # sans le moindre message d'erreur. Un déploiement en échec ici est bien
+      # préférable à ce silence.
+      - name: Verifie que l'extension connait l'adresse publiee
+        run: |
+          depot="${GITHUB_REPOSITORY#*/}"
+          # Seul le nom d'hôte est insensible à la casse ; le chemin, non.
+          proprietaire=$(printf '%s' "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
+          adresse="https://${proprietaire}.github.io/${depot}/"
+          if ! grep -qF "$adresse" extension/manifest.json; then
+            echo "::error::extension/manifest.json ne declare pas $adresse dans content_scripts.matches."
+            echo "Adresses actuellement declarees :"
+            grep -o 'https://[^"]*' extension/manifest.json || true
+            echo "Corrigez le manifest, ou renommez le depot pour qu'il corresponde."
+            exit 1
+          fi
+          echo "OK : l'extension reconnait $adresse"
+          # Le préfixe est calculé ici, une seule fois, et transmis à l'étape de
+          # build : ce qui est vérifié et ce qui est construit ne peuvent donc
+          # pas diverger.
+          echo "PUBLIC_BASE=/${depot}/" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      # `PUBLIC_BASE` vient de l'étape de vérification ci-dessus, qui l'a déduit
+      # du nom réel du dépôt : renommer le dépôt n'oblige pas à toucher ce
+      # fichier.
+      - name: Build
+        run: npm run build:pages
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

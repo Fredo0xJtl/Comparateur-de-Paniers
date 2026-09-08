@@ -12,6 +12,7 @@ import {
 } from '../features/backup/backupService';
 import { clearDriveSearchMemory } from '../features/drive-bridge/driveRefreshService';
 import { applyTheme, getSettings, updateSettings } from '../features/settings/settingsService';
+import { SyncSettingsPanel } from '../features/sync/SyncSettingsPanel';
 import { type UserSettings } from '../types/domain';
 
 const MAX_BACKUP_FILE_BYTES = 2 * 1024 * 1024;
@@ -446,6 +447,8 @@ export function SettingsPage() {
           </div>
         )}
       </div>
+
+      <SyncSettingsPanel />
 
       <div className="settingsPanel">
         <div>

@@ -2,28 +2,45 @@
   "manifest_version": 3,
   "name": "Comparateur de Paniers — Connecteur Drive",
   "description": "Collecte locale et volontaire des prix affichés par les catalogues Drive sélectionnés.",
-  "version": "0.6.8",
+  "version": "0.7.0",
   "minimum_chrome_version": "109",
-  "permissions": ["tabs", "storage", "scripting"],
+  "icons": {
+    "192": "icons/icon-192.png",
+    "512": "icons/icon-512.png"
+  },
+  "permissions": [
+    "tabs",
+    "storage",
+    "scripting"
+  ],
   "host_permissions": [
     "https://*.leclercdrive.fr/*",
     "https://*.coursesu.com/*"
   ],
+  "//optional_host_permissions": "AUCUNE de ces permissions n'est accordée à l'installation : Firefox ne les demande QUE si l'utilisateur déclare lui-même l'adresse de son installation dans la page d'options, et uniquement pour CETTE adresse (permissions.request). Elles existent parce que l'adresse d'une installation auto-hébergée (ordinateur, NAS, Raspberry Pi, domaine personnel) ne peut par définition pas figurer dans un paquet distribué — voir extension/shared/custom-origins.js. http:// est limité à la boucle locale : ailleurs, une page en clair peut être imitée par quiconque s'interpose sur le réseau, et obtiendrait alors le droit de piloter l'extension dans la session authentifiée de l'utilisateur sur les sites des enseignes.",
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
-    "scripts": ["background/service-worker.js"],
+    "scripts": [
+      "background/service-worker.js"
+    ],
     "type": "module"
   },
   "action": {
     "default_title": "Comparateur de Paniers — Drive"
   },
-  "//content_scripts.matches": "comparateur-panier.local/* : accès de test personnel au Comparateur de Paniers déployé sur le Raspberry Pi de l'auteur (réseau local uniquement, aucun port dans un match pattern WebExtension — voir extension/shared/bridge-origins.js). Alias mDNS dédié plutôt que raspberrypi.local : ce nom générique matcherait aussi le vhost HealthPanel (données de santé) qui tourne sur le même hôte à un autre port, un match pattern ne pouvant pas filtrer par port. À retirer avant toute soumission AMO publique/listée — n'a de sens que pour une version privée (unlisted) distribuée uniquement à l'auteur.",
+  "//content_scripts.matches": "Une seule origine : l'adresse publique de l'application. Aucune installation particulière n'est inscrite ici — ni un poste local, ni un NAS, ni un serveur personnel. Ces adresses-là se déclarent depuis la page d'options (voir extension/shared/custom-origins.js), qui demande à Firefox l'autorisation pour cette adresse et pour elle seule ; les inscrire ici les imposerait à TOUS les utilisateurs du paquet distribué, et une origine locale ainsi accordée d'office autoriserait n'importe quelle page du réseau de n'importe qui à piloter l'extension dans sa session marchande.",
   "content_scripts": [
     {
       "matches": [
-        "https://fredo0xjtl.github.io/Comparateur-de-Paniers/*",
-        "https://comparateur-panier.local/*"
+        "https://fredo0xjtl.github.io/Comparateur-de-Paniers/*"
       ],
-      "js": ["bridge/pwa-bridge.js"],
+      "js": [
+        "bridge/pwa-bridge.js"
+      ],
       "run_at": "document_start"
     }
   ],

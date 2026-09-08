@@ -13,6 +13,7 @@ import { checkPriceCoherence } from '../comparison/priceCoherence';
 import { listSelectedStores } from '../stores/storeLocatorService';
 import { isVerboseDiagnosticsEnabled } from './verboseDiagnostics';
 import {
+  EXTENSION_UNAVAILABLE_MESSAGE,
   getExtensionBridge,
   type DriveLivePickExtensionResponse,
   type DriveRefreshExtensionResponse,
@@ -614,7 +615,7 @@ export async function runDriveRefresh(
   try {
     await bridge.detectDriveExtension();
   } catch {
-    return { ran: false, reason: 'Extension Drive indisponible.' };
+    return { ran: false, reason: EXTENSION_UNAVAILABLE_MESSAGE };
   }
 
   const jobProducts = rows
@@ -969,7 +970,7 @@ export async function runLivePick(
   try {
     await bridge.detectDriveExtension();
   } catch {
-    return { ok: false, reason: 'Extension Drive indisponible.' };
+    return { ok: false, reason: EXTENSION_UNAVAILABLE_MESSAGE };
   }
 
   const job: DriveLivePickJobV1 = {

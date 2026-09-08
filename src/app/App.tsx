@@ -6,6 +6,9 @@ import { lazyRoute } from './lazyRoute';
 import { useSwipeNavigation } from './useSwipeNavigation';
 import { HomePage } from '../pages/HomePage';
 import { applyTheme, getSettings } from '../features/settings/settingsService';
+import { getExtensionBridge } from '../features/drive-bridge/extensionBridge';
+import { WelcomeDialog } from '../features/onboarding/WelcomeDialog';
+import { useWelcome } from '../features/onboarding/useWelcome';
 
 // Chargées à la demande : le scanner tire @zxing/library (la plus grosse
 // dépendance de l'app, inutile tant qu'on n'ouvre pas la caméra) et chaque
@@ -22,6 +25,10 @@ const SettingsPage = lazyRoute(() => import('../pages/SettingsPage'), 'SettingsP
 export function App() {
   const location = useLocation();
   const { onTouchStart, onTouchEnd } = useSwipeNavigation(location.pathname);
+  // Monté au niveau du shell, pas de la page d'accueil : quelqu'un peut
+  // arriver directement sur n'importe quelle page par un lien ou un signet,
+  // et l'installation manquante le concerne autant.
+  const welcome = useWelcome();
 
   useEffect(() => {
     // Applique le thème enregistré dès le premier rendu ; un léger flash au
@@ -30,11 +37,25 @@ export function App() {
     void getSettings().then((settings) => applyTheme(settings.theme));
   }, []);
 
+  useEffect(() => {
+    // Repère de statut extension, dès le chargement plutôt qu'au premier
+    // rafraîchissement de prix : en dev uniquement (le badge lui-même ne
+    // s'affiche qu'en dev, voir extensionBridge.ts), pour savoir en un coup
+    // d'œil sur quelle version on est sans devoir déclencher une action.
+    if (import.meta.env.DEV) {
+      void getExtensionBridge().detectDriveExtension().catch(() => {});
+    }
+  }, []);
+
   return (
     <div className="appShell">
       <header className="appHeader">
         <div className="appHeaderBrand">
-          <img className="appLogo" src="/icon.svg" alt="" />
+          {/* Préfixé par le chemin public : en dur, `/icon.svg` désigne la
+              racine du domaine, où le fichier n'existe pas si l'application
+              est servie sous un sous-chemin (GitHub Pages). Voir `base` dans
+              vite.config.ts. */}
+          <img className="appLogo" src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
           <div>
             <h1>Comparateur de Paniers</h1>
             <p className="appTagline">
@@ -42,7 +63,20 @@ export function App() {
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          className="appHelpButton"
+          onClick={welcome.open}
+          // Le tuto d'accueil se ferme et ne revient plus une fois
+          // l'installation faite : sans ce bouton, il n'existerait plus aucun
+          // moyen de le retrouver.
+          aria-label="Revoir les étapes d’installation"
+        >
+          Aide
+        </button>
       </header>
+
+      {welcome.state && welcome.visible && <WelcomeDialog state={welcome.state} onClose={welcome.close} />}
 
       <nav className="topNav" aria-label="Navigation principale">
         {appRoutes.map((route) => (

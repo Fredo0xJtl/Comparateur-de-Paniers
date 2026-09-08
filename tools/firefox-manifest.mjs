@@ -18,10 +18,14 @@ export const FIREFOX_OVERLAY_FILENAME = 'manifest.firefox.overlay.json';
 // soumis à Mozilla.
 export const CHROME_ONLY_KEYS = ['minimum_chrome_version'];
 
-// Clé de documentation interne à l'overlay (JSON n'accepte pas de
-// commentaires) : elle explique le fichier à qui l'ouvre, et ne doit jamais
-// se retrouver dans le manifest livré.
-const DOC_KEY = '//';
+// Clés de documentation interne (JSON n'accepte pas de commentaires) : elles
+// expliquent le fichier à qui l'ouvre, et ne doivent jamais se retrouver dans
+// le manifest livré. `web-ext lint` — bloquant pour une soumission AMO —
+// signale toute propriété inconnue du schéma, et une clé « // » en fait
+// partie. Le préfixe est traité génériquement plutôt qu'au cas par cas :
+// les clés « //gecko.id », « //content_scripts.matches » et
+// « //optional_host_permissions » existent déjà, d'autres suivront.
+const DOC_KEY_PREFIX = '//';
 
 export function mergeFirefoxManifest(base, overlay) {
   // Fusion de surface volontaire : l'overlay ne porte que des clés de premier
@@ -29,7 +33,9 @@ export function mergeFirefoxManifest(base, overlay) {
   // profondeur permettrait de surcharger une permission ou un content script
   // à moitié — exactement l'ambiguïté que ce fichier supprime.
   const merged = { ...base, ...overlay };
-  delete merged[DOC_KEY];
+  for (const key of Object.keys(merged)) {
+    if (key.startsWith(DOC_KEY_PREFIX)) delete merged[key];
+  }
   for (const key of CHROME_ONLY_KEYS) {
     delete merged[key];
   }

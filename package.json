@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:pages": "node tools/build-pages.mjs",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc -b",
@@ -14,7 +15,8 @@
     "extension:build:firefox": "node tools/build-firefox-extension.mjs",
     "extension:build:firefox:dev": "node tools/build-firefox-extension.mjs --dev",
     "extension:build:firefox:dev:5174": "node tools/build-firefox-extension.mjs --dev-port=5174",
-    "extension:build:firefox:dev:4174": "node tools/build-firefox-extension.mjs --dev-port=4174"
+    "extension:build:firefox:dev:4174": "node tools/build-firefox-extension.mjs --dev-port=4174",
+    "extension:package": "node tools/build-firefox-extension.mjs && node tools/package-firefox-extension.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

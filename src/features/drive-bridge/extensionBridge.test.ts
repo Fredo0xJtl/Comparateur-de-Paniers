@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createExtensionBridge, type BridgeMessageEvent } from './extensionBridge';
+import { EXTENSION_UNAVAILABLE_MESSAGE, createExtensionBridge, type BridgeMessageEvent } from './extensionBridge';
 
 function createSilentMessageTarget() {
   const listeners = new Set<(event: BridgeMessageEvent) => void>();
@@ -38,7 +38,7 @@ describe('createExtensionBridge diagnostics', () => {
       createNonce: () => 'nonce-bridge-123'
     });
 
-    const result = expect(bridge.detectDriveExtension()).rejects.toThrow('Extension Drive indisponible.');
+    const result = expect(bridge.detectDriveExtension()).rejects.toThrow(EXTENSION_UNAVAILABLE_MESSAGE);
     expect(document.getElementById('drive-price-splitter-pwa-debug-badge')?.textContent).toContain(
       'DPS PWA: ping envoyé'
     );
@@ -53,7 +53,11 @@ describe('createExtensionBridge diagnostics', () => {
     vi.useRealTimers();
   });
 
-  it("n'affiche aucun badge tant que le diagnostic verbeux n'est pas activé", async () => {
+  it('affiche le badge sans activation explicite en build de développement (import.meta.env.DEV)', async () => {
+    // Vitest tourne en mode dev (import.meta.env.DEV === true) : le badge
+    // doit apparaître même sans le flag localStorage, pour rester un repère
+    // toujours visible pendant le développement. En production, il reste
+    // opt-in (voir le test précédent et verboseDiagnostics.ts).
     vi.useFakeTimers();
     document.body.innerHTML = '';
     localStorage.removeItem('driveVerboseDiagnostics');
@@ -64,11 +68,43 @@ describe('createExtensionBridge diagnostics', () => {
       createNonce: () => 'nonce-bridge-123'
     });
 
-    const result = expect(bridge.detectDriveExtension()).rejects.toThrow('Extension Drive indisponible.');
+    const result = expect(bridge.detectDriveExtension()).rejects.toThrow(EXTENSION_UNAVAILABLE_MESSAGE);
     await vi.advanceTimersByTimeAsync(25);
     await result;
 
-    expect(document.getElementById('drive-price-splitter-pwa-debug-badge')).toBeNull();
+    expect(document.getElementById('drive-price-splitter-pwa-debug-badge')?.textContent).toContain(
+      'aucune réponse extension'
+    );
     vi.useRealTimers();
+  });
+});
+
+// Ce message porte deux publics d'un coup, et l'ordre compte. Il s'affiche
+// presque toujours parce que le connecteur n'est pas installé — le cas d'un
+// débutant, qui doit trouver là comment l'installer. Il couvre aussi
+// l'auto-hébergement, seul endroit où quelqu'un apprend qu'il doit déclarer
+// son adresse dans les réglages du connecteur, faute de quoi l'extension
+// paraît installée, active, et pourtant « indisponible ». Perdre l'une des
+// deux moitiés remet silencieusement un des deux publics dans l'impasse.
+describe('EXTENSION_UNAVAILABLE_MESSAGE', () => {
+  it('oriente d’abord le débutant vers l’installation', () => {
+    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/^Le connecteur Firefox ne répond pas\./);
+    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/Aide/);
+  });
+
+  it('garde la sortie de secours pour qui héberge l’application lui-même', () => {
+    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/hébergez cette application vous-même/);
+    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/réglages du connecteur/);
+  });
+
+  it('est le seul message utilisé par les services qui constatent l’absence d’extension', async () => {
+    // Sans cette constante partagée, la même situation s'expliquait
+    // différemment selon l'écran où on la rencontrait.
+    const bridge = createExtensionBridge({
+      messageTarget: createSilentMessageTarget(),
+      origin: 'https://exemple.test',
+      timeoutMs: 1
+    });
+    await expect(bridge.detectDriveExtension()).rejects.toThrow(EXTENSION_UNAVAILABLE_MESSAGE);
   });
 });

@@ -44,7 +44,13 @@ export function originMatchesPattern(origin, pattern) {
   const parsed = parseMatchPatternHost(pattern);
   if (!parsed) return false;
   if (parsed.scheme !== '*' && originUrl.protocol !== `${parsed.scheme}:`) return false;
-  if (parsed.port && originUrl.port !== parsed.port) return false;
+  // Le port d'une origine est vide quand il est celui du schéma (443 en https,
+  // 80 en http) : on le rétablit avant comparaison, sans quoi un motif portant
+  // un port explicite ne reconnaîtrait jamais l'adresse écrite sans.
+  if (parsed.port) {
+    const originPort = originUrl.port || (originUrl.protocol === 'https:' ? '443' : '80');
+    if (originPort !== parsed.port) return false;
+  }
   const hostname = originUrl.hostname.toLowerCase();
   if (parsed.matchSubdomains) {
     return hostname === parsed.host || hostname.endsWith(`.${parsed.host}`);

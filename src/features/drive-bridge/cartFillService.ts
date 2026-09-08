@@ -1,6 +1,7 @@
 import { type StoreKey, type UserStore, type ValidatedBasketItem } from '../../types/domain';
 import { listSelectedStores } from '../stores/storeLocatorService';
 import {
+  EXTENSION_UNAVAILABLE_MESSAGE,
   getExtensionBridge,
   type DriveAddToCartExtensionResponse,
   type DriveFetchCartReportResponse,
@@ -15,6 +16,19 @@ export type CartFillResultLine = {
   details?: Record<string, unknown>;
   matchedName?: string;
   matchedPriceEuro?: number;
+  // Ajoutés le 04/09 pour diagnostiquer un écart entre le total calculé par
+  // l'appli (qui multiplie toujours par la quantité demandée) et le panier
+  // réel : `added: true` signifiait jusque-là seulement "le produit est
+  // présent", jamais "en la bonne quantité" — un stepper +/- introuvable ou
+  // des clics sans effet passaient silencieusement pour un succès complet.
+  requestedQuantity?: number;
+  finalQuantity?: number;
+  quantityConfirmed?: boolean;
+  // Motif du refus de la tentative directe (URL exacte du produit validé),
+  // conservé même quand le repli par recherche échoue aussi — sans ça,
+  // "introuvable" pouvait masquer un rejet sur la fiche pourtant correcte
+  // (EAN qui ne correspond pas, bouton introuvable...).
+  directUrlAttempt?: { code?: string };
 };
 
 export type CartFillOutcome =
@@ -70,7 +84,7 @@ export async function runCartFill(
   try {
     await bridge.detectDriveExtension();
   } catch {
-    return { ran: false, reason: 'Extension Drive indisponible.' };
+    return { ran: false, reason: EXTENSION_UNAVAILABLE_MESSAGE };
   }
 
   // `productUrl` reste optionnel : Leclerc n'a aucune fiche produit stable à
@@ -149,7 +163,11 @@ function translateAddToCartResponse(response: DriveAddToCartExtensionResponse): 
     code: result.code,
     details: result.details,
     matchedName: result.matchedName,
-    matchedPriceEuro: result.matchedPriceEuro
+    matchedPriceEuro: result.matchedPriceEuro,
+    requestedQuantity: result.requestedQuantity,
+    finalQuantity: result.finalQuantity,
+    quantityConfirmed: result.quantityConfirmed,
+    directUrlAttempt: result.directUrlAttempt
   }));
 
   // Une panne au niveau du magasin entier (site bloqué, CAPTCHA, connexion

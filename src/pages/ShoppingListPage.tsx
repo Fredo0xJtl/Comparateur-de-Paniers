@@ -11,6 +11,7 @@ import {
   type ShoppingListRow
 } from '../features/shopping-list/shoppingListService';
 import { copyTextWithFallback } from '../features/shopping-list/clipboard';
+import { ListImportPanel } from '../features/list-import/ListImportPanel';
 import { type Product } from '../types/domain';
 
 export function ShoppingListPage() {
@@ -138,6 +139,8 @@ export function ShoppingListPage() {
 
       {status === 'ready' && (
         <>
+          <ListImportPanel onImported={() => void refreshList()} />
+
           <details className="shoppingListPanel">
             <summary>
               <span>Articles de la liste</span>

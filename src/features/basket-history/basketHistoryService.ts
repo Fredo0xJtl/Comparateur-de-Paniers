@@ -16,16 +16,18 @@ export async function recordValidatedBasket(input: RecordValidatedBasketInput): 
       const existing = await db.validatedBaskets.where('operationKey').equals(input.operationKey).first();
       if (existing) return existing;
     }
+    const now = new Date().toISOString();
     const basket: ValidatedBasket = {
       id: createId('basket'),
       storeKey: input.storeKey,
       total: input.total,
       savings: input.savings,
       items: input.items,
-      validatedAt: new Date().toISOString(),
+      validatedAt: now,
       operationKey: input.operationKey,
       calculationProof: input.calculationProof,
-      cartFillStatus: 'not_attempted'
+      cartFillStatus: 'not_attempted',
+      updatedAt: now
     };
     await db.validatedBaskets.add(basket);
     return basket;
@@ -40,13 +42,19 @@ export async function updateValidatedBasketCartFillStatus(
   const realization = cartFillStatus === 'done'
     ? { realizedAt: new Date().toISOString(), realizationSource: 'cart_fill_done' as const }
     : {};
-  await db.validatedBaskets.update(basketId, { cartFillStatus, cartFillMessage, ...realization });
+  await db.validatedBaskets.update(basketId, {
+    cartFillStatus,
+    cartFillMessage,
+    ...realization,
+    updatedAt: new Date().toISOString()
+  });
 }
 
 export async function confirmBasketRealized(basketId: string, realizedAt = new Date().toISOString()) {
   await db.validatedBaskets.update(basketId, {
     realizedAt,
-    realizationSource: 'manual_confirmation'
+    realizationSource: 'manual_confirmation',
+    updatedAt: new Date().toISOString()
   });
 }
 
@@ -56,7 +64,11 @@ export async function confirmBasketRealized(basketId: string, realizedAt = new D
 // il n'y a alors plus aucun moyen de retrouver le rapport final déjà terminé
 // côté extension.
 export async function updateValidatedBasketCartFillJobId(basketId: string, cartFillJobId: string) {
-  await db.validatedBaskets.update(basketId, { cartFillJobId, cartFillStatus: 'in_progress' });
+  await db.validatedBaskets.update(basketId, {
+    cartFillJobId,
+    cartFillStatus: 'in_progress',
+    updatedAt: new Date().toISOString()
+  });
 }
 
 export async function listValidatedBaskets(): Promise<ValidatedBasket[]> {
