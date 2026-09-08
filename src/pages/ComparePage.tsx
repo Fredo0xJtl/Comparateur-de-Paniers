@@ -18,7 +18,6 @@ import {
   type ProductCandidate,
   type StoreKey
 } from '../types/domain';
-import { type PriceRefreshReport } from '../features/comparison/priceRefreshService';
 import { buildAddToCartAction } from '../features/add-to-cart/addToCartAction';
 import {
   grantCartAutomationConsent,
@@ -126,7 +125,6 @@ export function ComparePage() {
           setComparison(loadedComparison);
           setSavingThresholdEuro(loadedComparison.settings.savingThresholdEuro);
           setThresholdText(String(loadedComparison.settings.savingThresholdEuro));
-          setRefreshMessage(formatRefreshReport(loadedComparison.refreshReport));
           setStatus('ready');
           setRefreshStatus('idle');
         }
@@ -240,7 +238,6 @@ export function ComparePage() {
     try {
       const loadedComparison = await loadActiveComparison({ refreshPrices: true });
       setComparison(loadedComparison);
-      setRefreshMessage(formatRefreshReport(loadedComparison.refreshReport));
       setStatus('ready');
       setRefreshStatus('idle');
     } catch {
@@ -663,6 +660,13 @@ export function ComparePage() {
                 </span>
               )}
             </label>
+            {/* Recalcule l'affichage avec le seuil qui vient d'être saisi. Ce
+                bouton n'affiche AUCUN rapport chiffré : la vérification locale
+                qu'il déclenche ne connaît que les prix de démonstration
+                (mockAdapterFactory), donc sur une vraie liste elle répondait
+                invariablement « 0 prix mis à jour, N non disponible(s) » — un
+                message que l'utilisateur lisait comme une panne. Le seul
+                rafraîchissement réel est « Actualiser les prix Drive ». */}
             <div className="cardActions">
               <button
                 className="secondaryButton"
@@ -2292,31 +2296,6 @@ function formatDriveProgress(progress: DriveRefreshProgressEvent | null) {
     }${stageLabel ? ` — ${stageLabel}` : ''}`;
   }
   return `${storeName} : collecte démarrée...`;
-}
-
-// Formule volontairement différente de celle de "Actualiser les prix Drive"
-// (voir handleDriveRefresh) : ce sont deux mécanismes distincts (celui-ci ne
-// va PAS sur les sites Leclerc/Hyper U, contrairement à l'autre) et un texte
-// trop similaire ("X prix actualisé(s)... indisponible(s)") pour les deux
-// laissait croire qu'un seul et même rafraîchissement avait eu lieu.
-function formatRefreshReport(report: PriceRefreshReport | undefined) {
-  if (!report) {
-    return '';
-  }
-
-  if (report.attempted === 0) {
-    return 'Aucun prix à actualiser pour cette liste.';
-  }
-
-  const parts = [`Vérification locale (sans aller sur les sites) : ${report.updated} prix mis à jour`];
-  if (report.unavailable > 0) {
-    parts.push(`${report.unavailable} non disponible(s) pour cette vérification`);
-  }
-  if (report.failed > 0) {
-    parts.push(`${report.failed} erreur(s), anciens prix conservés`);
-  }
-
-  return parts.join('. ') + '.';
 }
 
 function formatCoverageDetail(storeLabel: string, coverage: { covered: number; total: number }) {
