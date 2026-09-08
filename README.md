@@ -4,42 +4,91 @@
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 [![Local-first](https://img.shields.io/badge/donn%C3%A9es-100%25%20locales-green.svg)](PRIVACY.md)
 
-**→ [Ouvrir l'application](https://fredo0xjtl.github.io/Comparateur-de-Paniers/)** (rien à installer)
+**Comparez le prix de vos courses entre plusieurs drives, depuis votre téléphone.**
 
-Application web mobile-first, **locale et hors ligne**, pour préparer une liste de courses et comparer le prix d'un même panier entre **Hyper U / Courses U** et **Leclerc Drive**.
+**→ [Ouvrir l'application](https://fredo0xjtl.github.io/Comparateur-de-Paniers/)** — gratuit, sans compte, rien à installer sur votre appareil.
 
-Aucun serveur, aucun compte, aucune télémétrie : toutes les données restent dans le navigateur de l'appareil.
+Vous préparez votre liste de courses. L'application va lire les prix affichés sur les catalogues de vos magasins, puis vous dit combien vous économisez en répartissant votre panier entre deux enseignes plutôt qu'en achetant tout au même endroit.
+
+Compatible **Leclerc Drive** et **Courses U / Hyper U**.
 
 > **Projet indépendant**, sans lien ni affiliation avec E.Leclerc, Système U ou leurs filiales. Les marques citées appartiennent à leurs propriétaires respectifs.
 
 ---
 
-## Sommaire
+## Pour commencer
 
-- [Ce que fait l'application](#ce-que-fait-lapplication)
-- [Installation](#installation)
-- [Commandes](#commandes)
-- [Connecteur Firefox](#connecteur-firefox)
-- [Fonctionnement hors ligne](#fonctionnement-hors-ligne)
-- [Structure du projet](#structure-du-projet)
-- [Données et confidentialité](#données-et-confidentialité)
-- [Ce que le projet ne fera pas](#ce-que-le-projet-ne-fera-pas)
-- [Contribuer](#contribuer)
-- [Licence](#licence)
+Trois choses à faire une seule fois. L'application vous les rappelle à sa première ouverture.
 
-## Ce que fait l'application
+1. **Utilisez Firefox.** L'application ne fonctionne qu'avec ce navigateur, sur téléphone comme sur ordinateur — c'est le seul qui autorise le connecteur décrit ci-dessous. [Télécharger Firefox](https://www.mozilla.org/fr/firefox/new/)
+2. **Ajoutez le connecteur à Firefox.** C'est un petit module qui va lire les prix pour vous. Sans lui, l'application s'ouvre mais ne peut relever aucun prix.
+3. **Connectez-vous à vos comptes magasins** dans ce même Firefox, comme d'habitude. L'application ne connaît jamais vos identifiants : elle travaille dans la session que vous avez ouverte vous-même.
 
-- Gérer des produits simples (boissons, épicerie sèche, hygiène, entretien, conserves, petit-déjeuner) et une liste de courses.
-- Ajouter un produit par **scan de code-barres**, avec repli sur la saisie manuelle.
-- Comparer le total du panier magasin par magasin à partir de **preuves de prix horodatées**, et proposer une répartition optimisée entre les deux enseignes.
-- Signaler un produit absent d'une enseigne, ou une correspondance douteuse, sans bloquer le reste du panier.
-- Exporter et réimporter une sauvegarde JSON locale.
+Ensuite, ouvrez l'application, choisissez vos magasins, composez votre liste et lancez la comparaison.
 
-Un **connecteur Firefox facultatif** ouvre les catalogues Leclerc Drive et Courses U dans de vrais onglets, avec la session du navigateur de l'utilisateur, pour relever les prix affichés et — sur demande explicite — cliquer sur « Ajouter au panier ».
+> **Astuce :** dans le menu de Firefox, « Ajouter à l'écran d'accueil » installe l'application comme les autres, avec son icône.
 
-L'application **ne passe jamais commande**, n'accède à aucun moyen de paiement, et laisse la vérification finale à l'utilisateur sur le site officiel.
+## À quoi sert le connecteur
 
-## Installation
+Un navigateur ne laisse pas une page web en consulter une autre — c'est une protection, pas un défaut. Le connecteur est la pièce qui permet à l'application de lire les prix sur les sites des magasins.
+
+Il n'agit que lorsque vous le demandez, ouvre les catalogues dans de vrais onglets, relève les prix affichés, puis rend la main.
+
+Ce qu'il ne fait **jamais** : passer commande, toucher à un moyen de paiement, se connecter à un compte à votre place, ou agir en arrière-plan sans que vous l'ayez demandé. La vérification finale et la commande restent chez le magasin, sous votre contrôle.
+
+## Un problème ? Un prix faux ou manquant ?
+
+Ça arrive, et **c'est utile de le signaler** : les sites des magasins changent régulièrement, et une modification de leur côté peut faire échouer la lecture des prix du jour au lendemain. Sans signalement, le problème peut passer inaperçu pendant des semaines.
+
+### Ce qu'il faut envoyer
+
+Dans l'application, page **Comparer**, un bouton **« Télécharger le diagnostic »** apparaît après une comparaison. Il enregistre un fichier qui explique ce qui s'est passé.
+
+**Ne publiez pas ce fichier tel quel dans un message public.** Il contient le nom des produits de votre liste et les adresses des fiches consultées — donc, indirectement, vos habitudes de courses et la ville où vous les faites.
+
+Pour signaler un problème, [ouvrez un ticket](https://github.com/Fredo0xJtl/Comparateur-de-Paniers/issues) et donnez seulement :
+
+- ce que vous attendiez et ce qui s'est passé à la place ;
+- le **nom du produit** concerné, si c'est un seul produit qui pose problème ;
+- le **code d'erreur** affiché, s'il y en a un — c'est une suite de lettres majuscules du genre `CART_LOGIN_REQUIRED` ;
+- le magasin concerné (l'enseigne suffit, pas la ville).
+
+C'est suffisant dans la grande majorité des cas. Si le fichier complet devient nécessaire, on vous le demandera, et vous l'enverrez en privé — jamais dans le ticket public.
+
+### Pour une faille de sécurité
+
+N'ouvrez pas de ticket public : suivez la procédure décrite dans [`SECURITY.md`](SECURITY.md).
+
+## Vos données restent chez vous
+
+Il n'y a **aucun serveur**. L'application est un fichier que votre navigateur télécharge une fois, puis exécute sur votre appareil.
+
+- Vos listes, vos prix et vos magasins sont enregistrés **dans votre navigateur**, sur votre téléphone ou votre ordinateur.
+- **Aucun compte à créer**, aucun mot de passe, aucune adresse e-mail demandée.
+- **Aucun traçage**, aucune statistique d'usage, aucune publicité.
+- Le connecteur ne contient **aucun appel réseau** vers un serveur : il ne peut techniquement rien envoyer nulle part.
+
+Le détail, y compris les rares échanges réseau de l'application elle-même, est dans [`PRIVACY.md`](PRIVACY.md).
+
+**Deux conséquences à connaître.** Si vous effacez les données de votre navigateur, vos listes disparaissent — pensez à l'export de sauvegarde dans les réglages. Et cette sauvegarde, elle, contient vos habitudes d'achat : gardez-la comme un document personnel.
+
+## Ce que le projet ne fera pas
+
+Ce sont des décisions assumées, pas des fonctions manquantes :
+
+- pas de serveur, de compte ni de télémétrie ;
+- pas de connexion automatique à un compte marchand ;
+- pas de validation de commande ni d'accès au paiement ;
+- pas de contournement des protections anti-robot ni de résolution de captcha ;
+- aucun clic sur un bouton de consentement à votre place.
+
+---
+
+# Pour les développeurs
+
+Le reste de ce document s'adresse à qui veut lire, modifier ou construire le projet.
+
+## Installer et lancer
 
 Prérequis : **Node.js 22** ou plus récent.
 
@@ -66,15 +115,9 @@ Vite affiche l'adresse locale à ouvrir. Le serveur tourne en HTTPS avec un cert
 
 Les quatre premières, plus la validation du manifeste et un audit des dépendances, constituent l'intégration continue.
 
-## Connecteur Firefox
+Les instructions de compilation reproductibles du connecteur — celles fournies à Mozilla — sont dans [`BUILD.md`](BUILD.md).
 
-Le connecteur est l'extension qui relève les prix dans les catalogues des enseignes et les renvoie à l'application. Il est facultatif : sans lui, l'application fonctionne, mais les prix doivent être saisis à la main.
-
-### L'installer
-
-Depuis Mozilla Add-ons, sur ordinateur comme sur Firefox pour Android. Une fois installé, ouvrez [l'application](https://fredo0xjtl.github.io/Comparateur-de-Paniers/) : **il n'y a rien à régler**, cette adresse est reconnue d'origine.
-
-### Si vous hébergez l'application vous-même
+## Héberger l'application soi-même
 
 Le connecteur ne se relie qu'aux adresses qu'il connaît. Votre propre adresse — ordinateur, NAS, Raspberry Pi, nom de domaine personnel — ne peut pas figurer dans un paquet distribué à tout le monde : c'est vous qui la déclarez.
 
@@ -87,7 +130,7 @@ L'autorisation se retire à tout moment, depuis cette même page ou depuis « G�
 
 Les adresses en `http://` ne sont acceptées que sur votre propre machine (`localhost`). Ailleurs, la page circule en clair sur le réseau et pourrait être imitée par quiconque s'y interpose, qui hériterait alors du droit de piloter le connecteur dans votre session marchande : servez votre installation en `https://`.
 
-### Le construire soi-même
+## Construire le connecteur
 
 ```bash
 npm run extension:build:firefox   # paquet de production, dans dist/extension-firefox/
@@ -95,8 +138,6 @@ npm run extension:package         # + archive .zip prête pour Mozilla Add-ons
 ```
 
 Le paquet produit ne dialogue qu'avec le site publié de l'application, jamais avec un serveur local : **c'est celui-là seul qui doit être distribué**. Des variantes de développement restreintes à un port local existent pour tester (`extension:build:firefox:dev:5174`, `…:4174`).
-
-Le connecteur demande un consentement explicite au premier usage, n'automatise jamais la connexion à un compte marchand et ne valide jamais de commande.
 
 ## Fonctionnement hors ligne
 
@@ -118,6 +159,7 @@ src/
   features/     Une fonctionnalité par dossier :
                 comparison/    calcul du comparatif et preuves
                 drive-bridge/  dialogue avec le connecteur
+                onboarding/    fenêtre d'accueil des nouveaux utilisateurs
                 products/      catalogue local
                 scan/          code-barres et Open Food Facts
                 shopping-list/ listes de courses
@@ -135,23 +177,11 @@ Le détail des choix de conception — pourquoi une extension, comment fonctionn
 
 Les commentaires du code expliquent le *pourquoi* d'une décision, y compris ce qui a été essayé avant : les sites d'enseigne changent souvent, et ce contexte est ce qui évite de refaire deux fois la même erreur.
 
-## Données et confidentialité
+## Stockage local
 
-IndexedDB (via Dexie) stocke localement produits, listes, magasins, candidats, prix horodatés et réglages. Aucun serveur n'est nécessaire. Les réglages ne contiennent jamais d'identifiant de magasin, de cookie, de session ni de moyen de paiement.
+IndexedDB (via Dexie) stocke produits, listes, magasins, candidats, prix horodatés et réglages. Aucun serveur n'est nécessaire. Les réglages ne contiennent jamais d'identifiant de magasin, de cookie, de session ni de moyen de paiement.
 
 Trois chemins réseau seulement sont autorisés, et vérifiés automatiquement à chaque validation — le détail est dans [`PRIVACY.md`](PRIVACY.md).
-
-Les sauvegardes JSON exportées sont à conserver avec prudence : elles peuvent révéler des habitudes d'achat, des magasins fréquentés et des prix.
-
-## Ce que le projet ne fera pas
-
-Ces choix sont des décisions de conception, pas des fonctionnalités manquantes :
-
-- pas de serveur, de compte ni de télémétrie ;
-- pas d'automatisation de la connexion à un compte marchand ;
-- pas de validation de commande ni d'accès au paiement ;
-- pas de contournement de protection anti-robot ni de résolution de captcha ;
-- aucun clic sur un bouton de consentement à la place de l'utilisateur.
 
 ## Contribuer
 
