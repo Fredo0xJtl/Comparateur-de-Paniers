@@ -54,7 +54,9 @@ Le bouton « Télécharger le diagnostic », sur la page Comparer, produit un fi
 
 Ce fichier contient le nom des produits relevés, les prix trouvés et l'adresse des fiches consultées — ces adresses identifient le drive, donc la zone où tu fais tes courses. **Il ne doit pas être publié dans une issue.**
 
-Pour signaler un problème, seuls le code d'erreur, le nom du produit concerné et l'enseigne sont demandés : ils suffisent presque toujours, et n'exposent pas ta liste. Si le fichier complet devient nécessaire, il est demandé explicitement, pour un envoi privé, et supprimé une fois le problème traité.
+Pour signaler un problème, seuls le code d'erreur, le nom du produit concerné et l'enseigne sont demandés : ils suffisent presque toujours, et n'exposent pas ta liste.
+
+Si le fichier complet devient nécessaire, il est demandé explicitement et s'envoie à **Comparateur-de-Paniers-Dev@protonmail.com**, jamais dans un ticket public. Il sert uniquement à corriger le problème signalé : il n'est ni partagé, ni publié, ni utilisé à d'autres fins, et il est supprimé une fois le problème traité.
 
 ## Limites connues
 

@@ -33,6 +33,8 @@ npm run build
 
 **N'ouvre pas d'issue publique pour une faille de sécurité.** Utilise l'onglet *Security* du dépôt (« Report a vulnerability »), qui ouvre un signalement privé visible du seul mainteneur.
 
+Sans compte GitHub, écris à **Comparateur-de-Paniers-Dev@protonmail.com**. Ce canal reste privé, mais il n'offre pas le suivi structuré du signalement GitHub : préfère ce dernier quand c'est possible.
+
 Merci d'indiquer :
 
 - ce que la faille permet de faire concrètement ;
