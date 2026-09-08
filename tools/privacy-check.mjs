@@ -32,13 +32,33 @@ const absoluteUrlPattern = /https?:\/\/([a-z0-9.-]+)/gi;
 //   - nominatim.openstreetmap.org : géocodage, reçoit uniquement la ville
 //     saisie manuellement par l'utilisateur.
 //
+// S'y ajoute un cas différent, la synchronisation multi-appareils :
+//
+//   - src/features/sync/syncClient.ts : ne contient AUCUN hôte en dur (liste
+//     d'hôtes autorisés volontairement vide, et le contrôle ci-dessous la
+//     fait respecter). L'adresse appelée est celle que l'utilisateur saisit
+//     lui-même dans les réglages pour son propre serveur (typiquement son
+//     Raspberry Pi sur son réseau local), la fonctionnalité est inactive tant
+//     qu'elle n'est pas configurée, et rien ne part vers un tiers. Sans cette
+//     entrée, `npm run privacy:check` échouait — donc la CI aussi (étape
+//     « Privacy check » de .github/workflows/ci.yml) — depuis l'ajout de la
+//     synchro.
+//
 // Toute autre primitive réseau, dans tout autre fichier, reste une
 // violation. Ajouter une entrée ici est un acte délibéré qui doit
 // s'accompagner d'une mise à jour de PRIVACY.md.
 const NETWORK_ALLOWLIST = {
   'src/features/scan/openFoodFactsClient.ts': ['world.openfoodfacts.org'],
-  'src/features/stores/storeLocatorClient.ts': ['nominatim.openstreetmap.org']
+  'src/features/stores/storeLocatorClient.ts': ['nominatim.openstreetmap.org'],
+  'src/features/sync/syncClient.ts': []
 };
+
+// Modules qui n'existent que dans le dépôt de travail : la synchronisation
+// multi-appareils est retirée à la publication (voir
+// tools/publier-vers-public.mjs). Leur absence est normale là-bas et ne doit
+// pas faire échouer le contrôle d'allowlist obsolète — mais s'ils sont
+// présents, ils restent soumis aux mêmes règles que les autres.
+const OPTIONAL_ALLOWLIST_PATHS = new Set(['src/features/sync/syncClient.ts']);
 
 // Les tests injectent un `fetch` factice ou décrivent des URLs attendues ;
 // ils ne s'exécutent jamais chez l'utilisateur.
@@ -65,6 +85,7 @@ for (const allowedPath of Object.keys(NETWORK_ALLOWLIST)) {
   try {
     statSync(join(root, allowedPath));
   } catch {
+    if (OPTIONAL_ALLOWLIST_PATHS.has(allowedPath)) continue;
     violations.push(`${allowedPath}: fichier de l'allowlist réseau introuvable (allowlist obsolète)`);
   }
 }

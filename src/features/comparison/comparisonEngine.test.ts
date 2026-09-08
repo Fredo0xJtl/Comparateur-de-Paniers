@@ -1113,6 +1113,37 @@ describe('comparisonEngine', () => {
       expect(decision?.reason).toContain('départagé sur le prix au kilo');
     });
 
+    // Retour explicite du 04/09 : "Voir le calcul de cette ligne" ne montrait
+    // que le magasin retenu, impossible d'y vérifier soi-même le choix.
+    it('expose le prix (et le prix au kilo) des DEUX magasins pour la vérification manuelle', () => {
+      const result = compareShoppingList({
+        rows: [formatRow],
+        candidates: [
+          makeFormatCandidate('cand-puree-leclerc', 'leclerc', 375, 'g'),
+          makeFormatCandidate('cand-puree-hyperu', 'hyperu', 1040, 'g')
+        ],
+        priceSnapshots: [
+          makeFormatSnapshot('price-puree-leclerc', 'cand-puree-leclerc', 'leclerc', 1.5),
+          makeFormatSnapshot('price-puree-hyperu', 'cand-puree-hyperu', 'hyperu', 2.9)
+        ],
+        savingThresholdEuro: 3,
+        autoDecisionMinConfidence: 75,
+        maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+      });
+
+      const decision = result.decisions.find((d) => d.itemId === 'item-puree');
+      expect(decision?.priceComparisonByStore.leclerc).toEqual({
+        productName: 'Purée chez leclerc',
+        packagePrice: 1.5,
+        unitPriceLabel: '4.00 €/kg'
+      });
+      expect(decision?.priceComparisonByStore.hyperu).toEqual({
+        productName: 'Purée chez hyperu',
+        packagePrice: 2.9,
+        unitPriceLabel: '2.79 €/kg'
+      });
+    });
+
     it('utilise les prix au kilo affichés même si le format candidat manque en base', () => {
       const result = compareShoppingList({
         rows: [formatRow],

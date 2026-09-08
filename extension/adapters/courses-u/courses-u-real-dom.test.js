@@ -343,7 +343,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
 
     const result = await clickAddToCartOnMatchedCoursesUCardOnPage('Lait demi-écrémé Lactel 6x1L', 5.99, 1);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(clicksOnMatched).toEqual(['click']);
     expect(clicksOnOther).toEqual([]);
   });
@@ -408,7 +408,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -432,7 +432,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
       expect(stepperClicks).toBe(2);
     } finally {
       vi.useRealTimers();
@@ -458,7 +458,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
 
     const result = await clickAddToCartOnMatchedCoursesUCardOnPage('Lait demi-écrémé Lactel 6x1L', 5.99, 1);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(stepperClicks).toEqual([]);
   });
 
@@ -478,7 +478,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
 
     const result = await clickAddToCartOnMatchedCoursesUCardOnPage('Lait demi-écrémé Lactel 6x1L', 5.99, 3);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(stepperClicks).toBe(2);
   });
 
@@ -516,7 +516,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
       1
     );
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(clicks).toEqual(['click']);
   });
 
@@ -541,7 +541,7 @@ describe('clickAddToCartOnMatchedCoursesUCardOnPage', () => {
       1
     );
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(stepperClicks).toEqual([]);
   });
 });
@@ -580,7 +580,7 @@ describe('clickAddToCartOnCoursesUProductPageOnPage', () => {
 
     const result = await clickAddToCartOnCoursesUProductPageOnPage(1);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(mainClicks).toEqual(['click']);
     expect(carouselClicks).toEqual([]);
   });
@@ -608,7 +608,7 @@ describe('clickAddToCartOnCoursesUProductPageOnPage', () => {
 
     const result = await clickAddToCartOnCoursesUProductPageOnPage(1);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(clicks).toEqual(['main']);
   });
 
@@ -639,7 +639,7 @@ describe('clickAddToCartOnCoursesUProductPageOnPage', () => {
 
     const result = await clickAddToCartOnCoursesUProductPageOnPage(1);
 
-    expect(result).toEqual({ added: true });
+    expect(result.added).toBe(true);
     expect(stepperClicks).toEqual([]);
   });
 
@@ -663,7 +663,7 @@ describe('clickAddToCartOnCoursesUProductPageOnPage', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
       expect(stepperClicks).toBe(2);
     } finally {
       vi.useRealTimers();
@@ -1156,7 +1156,7 @@ describe('Résistance à un changement de structure du site — replis', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
       expect(clicks).toEqual(['main']);
     } finally {
       vi.useRealTimers();
@@ -1220,7 +1220,7 @@ describe('Fiabilité de la quantité — stepper qui absorbe un clic', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
       expect(field.value).toBe('3');
       expect(clicks).toBe(3);
     } finally {
@@ -1245,7 +1245,7 @@ describe('Fiabilité de la quantité — stepper qui absorbe un clic', () => {
       await vi.runAllTimersAsync();
       const result = await promise;
 
-      expect(result).toEqual({ added: true });
+      expect(result.added).toBe(true);
       expect(field.value).toBe('3');
       expect(clicks).toBe(0);
     } finally {

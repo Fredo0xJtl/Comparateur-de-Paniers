@@ -427,6 +427,13 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
     itemIndex += 1;
     if (itemIndex > 1) await wait(randomJitterMs(700, 1_600), signal);
     onProgress({ storeKey: store.storeKey, state: 'product_search', productIndex: itemIndex, productTotal: items.length, productName: item.name });
+    // Raison du premier échec (URL directe), si le repli par recherche
+    // ci-dessous échoue aussi : sans ça, le diagnostic final n'affichait QUE
+    // le code de l'échec de recherche (ex. CART_PRODUCT_NOT_FOUND), en
+    // écrasant silencieusement le vrai motif du refus sur la fiche produit
+    // exacte fournie par l'utilisateur (ex. mismatch EAN/nom, bouton
+    // introuvable) — impossible à diagnostiquer depuis le rapport téléchargé.
+    let directUrlAttempt;
     try {
       if (item.productUrl && isCoursesUUrl(item.productUrl)) {
         const direct = await tryAddToCartCoursesUViaProductUrl({ scripting, tabs, tabId, signal, item });
@@ -439,10 +446,14 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
             storeKey: 'hyperu',
             added: true,
             matchedName: direct.matchedName,
-            matchedPriceEuro: direct.matchedPriceEuro
+            matchedPriceEuro: direct.matchedPriceEuro,
+            requestedQuantity: direct.requestedQuantity,
+            finalQuantity: direct.finalQuantity,
+            quantityConfirmed: direct.quantityConfirmed
           });
           continue;
         }
+        directUrlAttempt = { code: direct.code };
         // Échec de la navigation directe (URL périmée, EAN qui ne
         // correspond pas au produit attendu, bouton introuvable...) : on
         // retombe sur la recherche par nom ci-dessous plutôt que d'abandonner
@@ -456,7 +467,7 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
         { name: cartSearchName, brand: dedupeBrandFromSearchName(cartSearchName, item.brand ?? '') }
       ]);
       if (!search?.started) {
-        results.push({ protocolVersion: 1, jobId: job.jobId, productId: item.productId, storeKey: 'hyperu', added: false, code: 'CART_SEARCH_NOT_STARTED' });
+        results.push({ protocolVersion: 1, jobId: job.jobId, productId: item.productId, storeKey: 'hyperu', added: false, code: 'CART_SEARCH_NOT_STARTED', directUrlAttempt });
         continue;
       }
       const candidates = await waitForCoursesUProducts({ scripting, tabId, signal, expectedQuery: search.query });
@@ -482,7 +493,8 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
           storeKey: 'hyperu',
           added: false,
           code: 'CART_PRODUCT_NOT_FOUND',
-          details
+          details,
+          directUrlAttempt
         });
         continue;
       }
@@ -503,8 +515,14 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
         // Même raison que sur le chemin par URL directe : le rapport doit
         // dire QUELLE carte a été ajoutée, pas seulement que ça a marché.
         ...(outcome?.added
-          ? { matchedName: best.name, matchedPriceEuro: best.priceEuro }
-          : { code: outcome?.code ?? 'ADD_TO_CART_CONTROL_NOT_FOUND', details })
+          ? {
+              matchedName: best.name,
+              matchedPriceEuro: best.priceEuro,
+              requestedQuantity: outcome.requestedQuantity,
+              finalQuantity: outcome.finalQuantity,
+              quantityConfirmed: outcome.quantityConfirmed
+            }
+          : { code: outcome?.code ?? 'ADD_TO_CART_CONTROL_NOT_FOUND', details, directUrlAttempt })
       });
     } catch (error) {
       // CAPTCHA_DETECTED (levé volontairement ci-dessus) doit interrompre
@@ -602,7 +620,14 @@ async function tryAddToCartCoursesUViaProductUrl({ scripting, tabs, tabId, signa
   // garde de nom trop permissive) était indétectable — le rapport ne
   // contenait que `added: true`, sans jamais dire QUOI avait été ajouté.
   return outcome?.added
-    ? { added: true, matchedName: page.name, matchedPriceEuro: page.priceEuro }
+    ? {
+        added: true,
+        matchedName: page.name,
+        matchedPriceEuro: page.priceEuro,
+        requestedQuantity: outcome.requestedQuantity,
+        finalQuantity: outcome.finalQuantity,
+        quantityConfirmed: outcome.quantityConfirmed
+      }
     : { added: false, code: outcome?.code ?? 'ADD_TO_CART_CONTROL_NOT_FOUND' };
 }
 
@@ -854,12 +879,22 @@ export async function clickAddToCartOnMatchedCoursesUCardOnPage(expectedName, ex
   // alors plus aucun bouton "Ajouter", seulement le stepper +/-. Sans cette
   // détection, ce cas ressortait à tort en ADD_TO_CART_CONTROL_NOT_FOUND —
   // un succès déguisé en échec (point mort confirmé le 2026-08-27).
+  // Dupliqué dans cette fonction (isolation d'injection, voir plus bas) :
+  // relit la quantité affichée après les clics et fait remonter l'écart
+  // (`quantityConfirmed: false`) au lieu de toujours affirmer `added: true`
+  // sans jamais vérifier que le stepper a bien atteint la cible.
+  const quantityOutcome = (stepper, requestedQuantity) => {
+    if (requestedQuantity <= 1) return { added: true, requestedQuantity, finalQuantity: 1, quantityConfirmed: true };
+    const finalQuantity = readStepperValue(stepper);
+    return { added: true, requestedQuantity, finalQuantity, quantityConfirmed: finalQuantity === requestedQuantity };
+  };
+
   const alreadyInCartStepper = findStepper(best);
   if (alreadyInCartStepper) {
     if (quantity > 1) {
       await increaseTo(alreadyInCartStepper, quantity);
     }
-    return { added: true };
+    return quantityOutcome(alreadyInCartStepper, quantity);
   }
 
   const addButton = findAddControl(best);
@@ -898,14 +933,15 @@ export async function clickAddToCartOnMatchedCoursesUCardOnPage(expectedName, ex
     return { added: false, code: 'CART_ADD_NOT_CONFIRMED' };
   }
 
+  let finalStepper;
   if (quantity > 1) {
-    const stepper = findStepper(best);
-    if (stepper) {
-      await increaseTo(stepper, quantity);
+    finalStepper = findStepper(best);
+    if (finalStepper) {
+      await increaseTo(finalStepper, quantity);
     }
   }
 
-  return { added: true };
+  return quantityOutcome(finalStepper, quantity);
 }
 
 // Runs in the page world, right after navigating straight to the confirmed
@@ -1008,12 +1044,22 @@ export async function clickAddToCartOnCoursesUProductPageOnPage(quantity) {
   // Le produit peut déjà être dans le panier (remplissage précédent
   // interrompu puis repris) : la fiche n'affiche alors plus de bouton
   // « Ajouter », seulement le stepper +/-.
+  // Dupliqué (isolation d'injection, cf. clickAddToCartOnMatchedCoursesUCardOnPage) :
+  // relit la quantité affichée après les clics au lieu d'affirmer aveuglément
+  // `added: true` — un stepper introuvable ou des clics sans effet passaient
+  // silencieusement pour un succès complet.
+  const quantityOutcome = (stepper, requestedQuantity) => {
+    if (requestedQuantity <= 1) return { added: true, requestedQuantity, finalQuantity: 1, quantityConfirmed: true };
+    const finalQuantity = readStepperValue(stepper);
+    return { added: true, requestedQuantity, finalQuantity, quantityConfirmed: finalQuantity === requestedQuantity };
+  };
+
   const alreadyInCartStepper = findStepper();
   if (alreadyInCartStepper) {
     if (quantity > 1) {
       await increaseTo(alreadyInCartStepper, quantity);
     }
-    return { added: true };
+    return quantityOutcome(alreadyInCartStepper, quantity);
   }
 
   const addButton = findMainAddControl();
@@ -1109,7 +1155,14 @@ export function chooseCoursesUProduct(product, candidates) {
       if (left.matchesTargetFormat !== right.matchesTargetFormat) {
         return left.matchesTargetFormat ? -1 : 1;
       }
-      return right.score - left.score;
+      if (left.score !== right.score) return right.score - left.score;
+      // Départage final déterministe — même correctif que côté Leclerc
+      // (rankLeclercCandidates) : à score et format cible identiques, ne plus
+      // dépendre de l'ordre d'arrivée des candidats dans le DOM (non garanti
+      // stable d'un scan à l'autre), mais d'une donnée intrinsèque au
+      // candidat (son URL produit) pour un résultat toujours identique à
+      // candidats identiques.
+      return (left.candidate.productUrl || '').localeCompare(right.candidate.productUrl || '');
     })[0];
   return match
     ? { ...match.candidate, matchScore: match.score, observedQuantity: match.observedQuantity, observedUnit: match.observedUnit }

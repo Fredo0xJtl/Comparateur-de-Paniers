@@ -430,18 +430,22 @@ describe('Leclerc Drive product matching', () => {
     expect(result.observedUnit).toBe('g');
   });
 
-  it('sans format cible connu, garde le comportement précédent (meilleur score de nom seul)', () => {
-    const result = chooseLeclercProductCandidate(
-      { name: 'Purée Mousline', brand: 'Mousline' },
-      [
-        { name: 'Purée Mousline nature 375g', brand: 'Mousline', priceEuro: 1.5, productUrl: 'https://www.leclercdrive.fr/produit/mousline-375' },
-        { name: 'Purée Mousline nature 1kg', brand: 'Mousline', priceEuro: 2.8, productUrl: 'https://www.leclercdrive.fr/produit/mousline-1kg' }
-      ]
-    );
-    expect(result).not.toBeNull();
-    // Les deux candidats ont un score de nom identique ; le parcmier du
-    // tableau l'emporte à égalité (tri stable), comme avant ce changement.
-    expect(result.productUrl).toBe('https://www.leclercdrive.fr/produit/mousline-375');
+  it('sans format cible connu, départage les scores ex æquo de façon déterministe (indépendante de l’ordre des candidats)', () => {
+    // Diagnostic réel (04/09/2026) : un même scan relancé sur les mêmes
+    // produits pouvait retenir un candidat différent d'une fois sur l'autre.
+    // Cause : à score de nom identique, le tri ne départageait qu'avec
+    // l'ordre d'arrivée des candidats dans le DOM du site — non garanti
+    // stable d'un scan à l'autre. Ce test vérifie que l'ordre d'entrée du
+    // tableau n'influence plus le résultat.
+    const candidates = [
+      { name: 'Purée Mousline nature 375g', brand: 'Mousline', priceEuro: 1.5, productUrl: 'https://www.leclercdrive.fr/produit/mousline-375' },
+      { name: 'Purée Mousline nature 1kg', brand: 'Mousline', priceEuro: 2.8, productUrl: 'https://www.leclercdrive.fr/produit/mousline-1kg' }
+    ];
+    const product = { name: 'Purée Mousline', brand: 'Mousline' };
+    const forward = chooseLeclercProductCandidate(product, candidates);
+    const reversed = chooseLeclercProductCandidate(product, [...candidates].reverse());
+    expect(forward).not.toBeNull();
+    expect(forward.productUrl).toBe(reversed.productUrl);
   });
 
   it('remonte le format observé même sans format cible (pour le signalement cross-store côté PWA)', () => {

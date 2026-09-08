@@ -34,6 +34,14 @@ Le connecteur facultatif pilote le site de l'enseigne dans un véritable onglet 
 
 Le remplissage de panier facultatif peut rechercher des produits et cliquer sur « Ajouter au panier » dans les onglets d'enseigne, mais uniquement après une action visible de l'utilisateur et un consentement explicite au premier usage. Il ne valide aucune commande, n'accède à aucun moyen de paiement et n'extrait aucun identifiant. Les liens produits manuels restent disponibles.
 
+#### Sur quelles pages le connecteur s'active
+
+En dehors des deux sites d'enseigne ci-dessus, le connecteur ne se relie qu'à **une seule adresse** : celle de l'application publique, inscrite dans son paquet. Il ne lit, ne modifie et n'observe aucune autre page visitée.
+
+Une seconde possibilité existe pour ceux qui hébergent l'application eux-mêmes — sur leur ordinateur, un NAS, un Raspberry Pi ou leur propre nom de domaine. Leur adresse ne peut par nature pas figurer dans un paquet distribué à tout le monde : elle se déclare dans les réglages de l'extension, et **Firefox demande alors un accord explicite pour cette adresse, et pour elle seule**. Le paquet déclare la permission correspondante comme *facultative* : rien n'est accordé à l'installation, et l'autorisation peut être retirée à tout moment, depuis les réglages de l'extension ou depuis « Gérer les extensions » dans Firefox.
+
+Les adresses en `http://` ne sont acceptées que sur la machine elle-même (`localhost`). Ailleurs, une page transmise en clair pourrait être imitée par quiconque s'interpose sur le réseau, et hériterait du droit de piloter le connecteur.
+
 ## Données sensibles
 
 Les listes de courses et les sauvegardes peuvent révéler des habitudes, des magasins fréquentés et des prix. Les fichiers JSON exportés sont à traiter comme des fichiers privés.

@@ -26,6 +26,23 @@ describe('manifest Firefox', () => {
     expect(duplicated).toEqual([]);
   });
 
+  // JSON n'a pas de commentaires : les clés « //… » servent à documenter les
+  // manifests sur place. Elles n'appartiennent à aucun schéma WebExtension,
+  // et `web-ext lint` — bloquant pour une soumission AMO — signale toute
+  // propriété inconnue. Elles doivent donc disparaître du paquet livré,
+  // quelle que soit celle qui est ajoutée ensuite.
+  it('retire toutes les clés de documentation du manifest livré', () => {
+    const merged = mergeFirefoxManifest(
+      { ...baseManifest, '//exemple': 'note de base' },
+      { ...overlay, '//autre': 'note de surcharge' }
+    );
+    expect(Object.keys(merged).filter((key) => key.startsWith('//'))).toEqual([]);
+  });
+
+  it('ne laisse aucune clé de documentation dans le manifest réellement construit', () => {
+    expect(Object.keys(readFirefoxManifest(extensionDir)).filter((key) => key.startsWith('//'))).toEqual([]);
+  });
+
   it('prend sa version dans le manifest de base, jamais dans les surcharges', () => {
     expect(readFirefoxManifest(extensionDir).version).toBe(baseManifest.version);
     expect(overlay).not.toHaveProperty('version');

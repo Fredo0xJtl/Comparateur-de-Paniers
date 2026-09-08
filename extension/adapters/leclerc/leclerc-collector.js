@@ -2853,7 +2853,17 @@ function rankLeclercCandidates(product, candidates) {
       if (left.matchesTargetFormat !== right.matchesTargetFormat) {
         return left.matchesTargetFormat ? -1 : 1;
       }
-      return right.score - left.score;
+      if (left.score !== right.score) return right.score - left.score;
+      // Départage final déterministe (diagnostic réel : deux relances du même
+      // scan, mêmes produits, résultat différent) : à score et format cible
+      // identiques, le tri ne se basait plus que sur l'ORDRE d'arrivée des
+      // candidats dans le DOM du site, qui n'est pas garanti stable d'un scan
+      // à l'autre (rendu progressif, mise en avant publicitaire...). On
+      // compare ici une donnée intrinsèque au candidat (son URL produit),
+      // jamais son rang d'apparition — le même jeu de candidats donne donc
+      // toujours le même gagnant, quel que soit l'ordre où le site les a
+      // servis cette fois-ci.
+      return (left.candidate.productUrl || '').localeCompare(right.candidate.productUrl || '');
     });
 }
 

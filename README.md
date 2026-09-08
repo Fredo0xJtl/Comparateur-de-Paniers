@@ -1,8 +1,10 @@
 # Comparateur de Paniers
 
-[![CI](https://github.com/Fredo0xJtl/Comparateur_de_Paniers/actions/workflows/ci.yml/badge.svg)](https://github.com/Fredo0xJtl/Comparateur_de_Paniers/actions/workflows/ci.yml)
+[![CI](https://github.com/Fredo0xJtl/Comparateur-de-Paniers/actions/workflows/ci.yml/badge.svg)](https://github.com/Fredo0xJtl/Comparateur-de-Paniers/actions/workflows/ci.yml)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 [![Local-first](https://img.shields.io/badge/donn%C3%A9es-100%25%20locales-green.svg)](PRIVACY.md)
+
+**→ [Ouvrir l'application](https://fredo0xjtl.github.io/Comparateur-de-Paniers/)** (rien à installer)
 
 Application web mobile-first, **locale et hors ligne**, pour préparer une liste de courses et comparer le prix d'un même panier entre **Hyper U / Courses U** et **Leclerc Drive**.
 
@@ -53,19 +55,43 @@ Vite affiche l'adresse locale à ouvrir. Le serveur tourne en HTTPS avec un cert
 | Commande | Rôle |
 | --- | --- |
 | `npm run dev` | Serveur de développement. |
-| `npm run build` | Build de production dans `dist/`. |
+| `npm run build` | Build de production dans `dist/`, pour un hébergement à la racine d'un domaine. |
+| `npm run build:pages` | Build destiné à GitHub Pages, qui sert le site sous `/<dépôt>/` et non à la racine. Ajoute aussi `404.html`, sans lequel un lien direct ou un simple rechargement de page renverrait une erreur. |
 | `npm run test` | Suite de tests (Vitest). |
 | `npm run typecheck` | Vérification TypeScript. |
 | `npm run privacy:check` | Refuse tout appel réseau applicatif hors de la liste autorisée. |
 | `npm run extension:check` | Valide le manifeste du connecteur. |
 | `npm run extension:build:firefox` | Construit le connecteur Firefox distribuable. |
+| `npm run extension:package` | Construit puis archive le connecteur en `.zip` prêt pour Mozilla Add-ons, en refusant tout paquet contenant des origines de développement, un identifiant de test ou des fichiers de test. |
 
 Les quatre premières, plus la validation du manifeste et un audit des dépendances, constituent l'intégration continue.
 
 ## Connecteur Firefox
 
+Le connecteur est l'extension qui relève les prix dans les catalogues des enseignes et les renvoie à l'application. Il est facultatif : sans lui, l'application fonctionne, mais les prix doivent être saisis à la main.
+
+### L'installer
+
+Depuis Mozilla Add-ons, sur ordinateur comme sur Firefox pour Android. Une fois installé, ouvrez [l'application](https://fredo0xjtl.github.io/Comparateur-de-Paniers/) : **il n'y a rien à régler**, cette adresse est reconnue d'origine.
+
+### Si vous hébergez l'application vous-même
+
+Le connecteur ne se relie qu'aux adresses qu'il connaît. Votre propre adresse — ordinateur, NAS, Raspberry Pi, nom de domaine personnel — ne peut pas figurer dans un paquet distribué à tout le monde : c'est vous qui la déclarez.
+
+1. Ouvrez votre installation dans un onglet et copiez l'adresse affichée dans la barre du navigateur.
+2. Ouvrez les réglages de l'extension : menu ☰ → **Modules et thèmes** → **Comparateur de Paniers — Connecteur Drive** → onglet **Préférences**.
+3. Collez l'adresse dans « Adresse de votre installation », puis validez.
+4. Firefox demande votre accord **pour cette adresse uniquement**. Acceptez, puis rechargez la page de l'application.
+
+L'autorisation se retire à tout moment, depuis cette même page ou depuis « Gérer les extensions » dans Firefox.
+
+Les adresses en `http://` ne sont acceptées que sur votre propre machine (`localhost`). Ailleurs, la page circule en clair sur le réseau et pourrait être imitée par quiconque s'y interpose, qui hériterait alors du droit de piloter le connecteur dans votre session marchande : servez votre installation en `https://`.
+
+### Le construire soi-même
+
 ```bash
-npm run extension:build:firefox
+npm run extension:build:firefox   # paquet de production, dans dist/extension-firefox/
+npm run extension:package         # + archive .zip prête pour Mozilla Add-ons
 ```
 
 Le paquet produit ne dialogue qu'avec le site publié de l'application, jamais avec un serveur local : **c'est celui-là seul qui doit être distribué**. Des variantes de développement restreintes à un port local existent pour tester (`extension:build:firefox:dev:5174`, `…:4174`).

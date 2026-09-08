@@ -1,8 +1,9 @@
 {
   "//": "Surcharges Firefox appliquees PAR-DESSUS extension/manifest.json par tools/build-firefox-extension.mjs. Ne dupliquer ici AUCUNE cle deja presente dans le manifest de base (permissions, content_scripts, version...) : c'est cette duplication qui a fait diverger les deux fichiers. Voir tools/firefox-manifest.mjs.",
+  "//gecko.id": "Identifiant DEFINITIF du module publie sur AMO. AMO identifie un module par cet id, pas par son nom ni le nom du .zip : un id different est traite comme une AUTRE extension et l'upload est refuse (erreur deja vue 2 fois). Change une seule fois, le 08/09/2026, de drive-price-splitter-dev@fredo0xjtl.github.io vers cet id propre, AVANT toute publication listee -- l'ancien module AMO (soumissions de test uniquement) est abandonne. Ne JAMAIS le rechanger apres la premiere publication listee : les utilisateurs installes ne recevraient plus aucune mise a jour.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "drive-price-splitter@fredo0xjtl.github.io",
+      "id": "comparateur-de-paniers@fredo0xjtl.github.io",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
         "required": [

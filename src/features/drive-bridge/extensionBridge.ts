@@ -8,10 +8,30 @@ import {
   type DriveAddToCartJobV1,
   type DriveAddToCartResultV1,
   type DriveLivePickJobV1,
+  type DriveListImportJobV1,
+  type DriveListImportReportV1,
   type DrivePriceObservationV1,
   type DriveRefreshJobV1
 } from './driveProtocol';
 import { isVerboseDiagnosticsEnabled } from './verboseDiagnostics';
+
+// Message unique pour « l'extension n'a pas répondu », partagé par tous les
+// services qui peuvent le constater — sans quoi la même situation
+// s'expliquerait différemment selon l'écran où on la rencontre.
+//
+// Rédigé pour le cas de loin le plus fréquent, et le seul qui concerne un
+// débutant : le connecteur n'est pas installé. Une version antérieure ouvrait
+// sur le cas de l'auto-hébergement (« si tu héberges cette application
+// toi-même... ») — vrai, mais adressé à une poignée de personnes, et
+// déroutant pour toutes les autres, qui y lisaient une manipulation à faire
+// alors qu'il leur suffisait d'installer le connecteur. Le cas de
+// l'auto-hébergement reste couvert, en fin de message : celui qui héberge
+// l'application sait qu'il le fait, il se reconnaîtra ; l'inverse n'est pas
+// vrai. Voir extension/shared/custom-origins.js pour ce que recouvre cette
+// seconde phrase.
+export const EXTENSION_UNAVAILABLE_MESSAGE =
+  'Le connecteur Firefox ne répond pas. Ouvrez « Aide » en haut de l’écran pour l’installer, ' +
+  'puis rechargez cette page. (Si vous hébergez cette application vous-même, autorisez plutôt son adresse dans les réglages du connecteur.)';
 
 export type BridgeMessageEvent = {
   data: unknown;
@@ -140,6 +160,21 @@ export type DriveAddToCartExtensionResponse = {
 // `found: false` couvre aussi bien "jobId inconnu" que "expiré" (TTL côté
 // service worker), sans distinction utile côté appelant : dans les deux cas
 // il n'y a rien à récupérer.
+export type DriveListImportProgressEvent = {
+  storeKey: string;
+  state: 'opening_page' | 'reading_list' | 'reading_department';
+  departmentIndex?: number;
+  departmentTotal?: number;
+  departmentLabel?: string;
+};
+
+export type DriveListImportExtensionResponse = {
+  accepted: boolean;
+  extensionVersion?: string;
+  reason?: string;
+  report?: DriveListImportReportV1;
+};
+
 export type DriveFetchCartReportResponse =
   | ({ found: true } & DriveAddToCartExtensionResponse)
   | { found: false };
@@ -199,7 +234,7 @@ export function createExtensionBridge(options?: {
         const timeout = setTimeout(() => {
           cleanup();
           showPwaDebugBadge(`DPS PWA: aucune réponse extension après ${timeoutMs}ms | origin=${origin}`, true);
-          reject(new Error('Extension Drive indisponible.'));
+          reject(new Error(EXTENSION_UNAVAILABLE_MESSAGE));
         }, timeoutMs);
 
         messageTarget.addEventListener('message', handleMessage);
@@ -353,6 +388,61 @@ export function createExtensionBridge(options?: {
       }
 
       return result;
+    },
+
+    // Import d'une liste/de favoris déjà enregistrés sur le compte de
+    // l'utilisateur. Timeout local aligné sur le chien de garde de l'extension
+    // (4 min) plus une marge : un import Leclerc parcourt tous les rayons avec
+    // une pause humaine entre chacun, il est donc naturellement long.
+    startListImport(
+      job: DriveListImportJobV1,
+      onProgress?: (event: DriveListImportProgressEvent) => void
+    ): Promise<DriveListImportExtensionResponse> {
+      let progressListener: ((event: BridgeMessageEvent) => void) | null = null;
+      if (onProgress) {
+        progressListener = (event: BridgeMessageEvent) => {
+          if (
+            event.source !== messageTarget ||
+            event.origin !== origin ||
+            !isRecord(event.data) ||
+            event.data.source !== EXTENSION_SOURCE ||
+            event.data.type !== 'DRIVE_IMPORT_LIST_PROGRESS' ||
+            event.data.jobId !== job.jobId ||
+            !isRecord(event.data.progress)
+          ) {
+            return;
+          }
+          onProgress(event.data.progress as DriveListImportProgressEvent);
+        };
+        messageTarget.addEventListener('message', progressListener);
+      }
+
+      const result = sendBridgeRequest<DriveListImportExtensionResponse>({
+        messageTarget,
+        origin,
+        timeoutMs: Math.max(timeoutMs, 5 * 60 * 1_000),
+        nonce: createNonce(),
+        requestType: 'DRIVE_IMPORT_LIST_START',
+        payload: { job }
+      });
+
+      if (progressListener) {
+        const cleanup = () => messageTarget.removeEventListener('message', progressListener!);
+        result.then(cleanup, cleanup);
+      }
+
+      return result;
+    },
+
+    cancelListImport(jobId: string): Promise<{ cancelled: boolean }> {
+      return sendBridgeRequest<{ cancelled: boolean }>({
+        messageTarget,
+        origin,
+        timeoutMs,
+        nonce: createNonce(),
+        requestType: 'DRIVE_IMPORT_LIST_CANCEL',
+        payload: { jobId }
+      });
     }
   };
 }
@@ -412,11 +502,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function showPwaDebugBadge(text: string, isError = false) {
-  // Diagnostic visuel réservé à une investigation explicite : sans ce
-  // garde-fou, le badge s'affichait par-dessus la PWA de production pour
-  // tout le monde. Activation temporaire en console :
+  // Diagnostic visuel réservé au développement : sans ce garde-fou, le badge
+  // s'affichait par-dessus la PWA de production pour tout le monde. Toujours
+  // visible en build de dev (repère au premier coup d'œil sur la version
+  // testée) ; en production, activation temporaire uniquement, en console :
   // localStorage.setItem('driveVerboseDiagnostics', '1') puis recharger.
-  if (!isVerboseDiagnosticsEnabled()) return;
+  if (!import.meta.env.DEV && !isVerboseDiagnosticsEnabled()) return;
   if (typeof document === 'undefined') return;
   let badge = document.getElementById(PWA_DEBUG_BADGE_ID);
   if (!badge) {

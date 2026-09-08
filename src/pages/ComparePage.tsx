@@ -204,6 +204,7 @@ export function ComparePage() {
       ...current,
       [storeKey]: outcome.ran ? outcome.results : []
     }));
+
     if (!outcome.ran) {
       await updateValidatedBasketCartFillStatus(basketId, 'failed', outcome.reason);
       setValidateStatusByStore((current) => ({ ...current, [storeKey]: 'error' }));
@@ -212,7 +213,7 @@ export function ComparePage() {
         [storeKey]:
           outcome.code === 'CART_LOGIN_REQUIRED'
             ? `Panier enregistré (${formatMoney(total)}). Tu n'es pas connecté(e) à ton compte ${storeLabels[storeKey]} : connecte-toi sur l'onglet resté ouvert, puis reviens ici et re-touche « Valider le panier ${storeLabels[storeKey]} » pour lancer le remplissage.`
-            : `Panier enregistré (${formatMoney(total)}), mais l'ajout automatique a échoué : ${(outcome.code && DRIVE_ERROR_LABELS[outcome.code]) ?? outcome.reason}.`
+            : `Panier enregistré (${formatMoney(total)}), mais l'ajout automatique a échoué : ${withFinalPeriod((outcome.code && DRIVE_ERROR_LABELS[outcome.code]) ?? outcome.reason)}`
       }));
       return;
     }
@@ -828,6 +829,7 @@ export function ComparePage() {
             onForceStore={handleForceStore}
             onForceCandidate={handleForceCandidate}
             onCandidateConfirmed={handleCandidateConfirmed}
+            onRejectCandidate={handleRejectCandidate}
             storeKey="leclerc"
             onValidate={handleValidateBasket}
             validateStatus={validateStatusByStore.leclerc}
@@ -847,6 +849,7 @@ export function ComparePage() {
             onForceStore={handleForceStore}
             onForceCandidate={handleForceCandidate}
             onCandidateConfirmed={handleCandidateConfirmed}
+            onRejectCandidate={handleRejectCandidate}
             storeKey="hyperu"
             onValidate={handleValidateBasket}
             validateStatus={validateStatusByStore.hyperu}
@@ -910,6 +913,14 @@ export function ComparePage() {
       )}
     </section>
   );
+}
+
+// Les motifs d'échec viennent de deux sources : des libellés courts
+// (DRIVE_ERROR_LABELS) et des messages déjà rédigés en phrases complètes, comme
+// EXTENSION_UNAVAILABLE_MESSAGE. Ajouter un point sans regarder produisait
+// « ...autorise cette adresse.. » sur les seconds.
+function withFinalPeriod(text: string) {
+  return /[.!?…]$/.test(text.trimEnd()) ? text : `${text}.`;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -1110,6 +1121,7 @@ function StoreDecisionList({
   onForceStore,
   onForceCandidate,
   onCandidateConfirmed,
+  onRejectCandidate,
   storeKey,
   onValidate,
   validateStatus,
@@ -1127,6 +1139,7 @@ function StoreDecisionList({
   onForceStore: (itemId: string, storeKey: StoreKey | null) => void;
   onForceCandidate: (itemId: string, candidateId: string | null) => void;
   onCandidateConfirmed: (itemId: string) => void;
+  onRejectCandidate: (candidateId: string) => void;
   storeKey: StoreKey;
   onValidate?: (storeKey: StoreKey) => void;
   validateStatus?: 'idle' | 'validating' | 'done' | 'error';
@@ -1143,6 +1156,13 @@ function StoreDecisionList({
   // celui validé : invisibles dans la liste des échecs ci-dessous, puisqu'ils
   // sont comptés comme des succès.
   const cartFillMismatches = cartFillFailures ? findCartFillMismatches(cartFillFailures, expectedByProductId) : [];
+  // Ajouté "réussi" mais quantité non confirmée (stepper +/- introuvable ou
+  // clics restés sans effet) : le total calculé compte pourtant la quantité
+  // demandée en entier — c'est la cause la plus probable d'un écart entre le
+  // total affiché ici et le vrai total du panier sur le site (04/09).
+  const cartFillQuantityIssues = (cartFillFailures ?? []).filter(
+    (line) => line.added && line.quantityConfirmed === false
+  );
   return (
     <div className="settingsPanel">
       <div>
@@ -1199,6 +1219,23 @@ function StoreDecisionList({
               </ul>
             </>
           )}
+          {cartFillQuantityIssues.length > 0 && (
+            <>
+              <p className="panelText panelTextDanger">
+                Attention : {cartFillQuantityIssues.length} produit(s) ajouté(s) au panier sans confirmation que la
+                quantité demandée a bien été atteinte. Vérifie la quantité de ces lignes directement sur le site
+                avant de payer — c'est la cause la plus probable d'un total différent de celui calculé ici.
+              </p>
+              <ul className="warningList">
+                {cartFillQuantityIssues.map((line) => (
+                  <li key={`qty-${line.productId}`}>
+                    {productNameById.get(line.productId) ?? 'Produit inconnu'} : {line.requestedQuantity} demandé(s),{' '}
+                    {line.finalQuantity ?? 'inconnu'} constaté(s) sur le site
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {cartFillFailures.some((line) => !line.added) && (
             <ul className="warningList">
               {cartFillFailures
@@ -1207,6 +1244,8 @@ function StoreDecisionList({
                   <li key={failure.productId}>
                     {productNameById.get(failure.productId) ?? 'Produit inconnu'} :{' '}
                     {(failure.code && DRIVE_ERROR_LABELS[failure.code]) ?? 'échec non identifié'} — à ajouter manuellement
+                    {failure.directUrlAttempt?.code &&
+                      ` (fiche exacte refusée : ${DRIVE_ERROR_LABELS[failure.directUrlAttempt.code] ?? failure.directUrlAttempt.code})`}
                   </li>
                 ))}
             </ul>
@@ -1272,13 +1311,65 @@ function StoreDecisionList({
               )}
               <details>
                 <summary>Voir le calcul de cette ligne</summary>
+                {/* Reformulé en langage courant (retour du 04/09 : la
+                    formule "quantité × prix = total" seule n'était pas assez
+                    parlante) + tableau prix/magasin ajouté pour que
+                    l'utilisateur puisse vérifier lui-même le choix sans
+                    rouvrir les deux fiches — au prix du paquet ET au
+                    kilo/litre, seule base comparable entre deux formats
+                    différents (voir unitPriceArbitration.ts). */}
                 <p className="panelText">
-                  {decision.quantityToBuy} unité(s) × {formatMoney(
-                    decision.quantityToBuy > 0 && decision.price !== undefined
-                      ? decision.price / decision.quantityToBuy
-                      : null
-                  )} = {formatMoney(decision.price ?? null)}. {decision.reason}
+                  Tu en veux {decision.quantityToBuy}
+                  {decision.quantityToBuy > 1 ? ' exemplaires' : ' exemplaire'}
+                  {decision.price !== undefined && decision.quantityToBuy > 0 && (
+                    <>
+                      {' '}
+                      , à {formatMoney(decision.price / decision.quantityToBuy)} pièce chez{' '}
+                      {decision.selectedStoreKey ? storeLabels[decision.selectedStoreKey] : 'le magasin retenu'} —{' '}
+                      {formatMoney(decision.price)} au total.
+                    </>
+                  )}
                 </p>
+                <p className="panelText">{decision.reason}</p>
+                {Object.keys(decision.priceComparisonByStore).length > 0 && (
+                  <>
+                    <p className="panelText">
+                      Prix relevé chez chaque magasin, et ramené au kilo ou au litre pour comparer même quand les
+                      tailles de paquet diffèrent :
+                    </p>
+                    <div className="priceComparisonList">
+                      {(['leclerc', 'hyperu'] as StoreKey[]).map((storeKey) => {
+                        const info = decision.priceComparisonByStore[storeKey];
+                        return (
+                          <div
+                            className={
+                              decision.selectedStoreKey === storeKey
+                                ? 'priceComparisonRow priceComparisonRowSelected'
+                                : 'priceComparisonRow'
+                            }
+                            key={storeKey}
+                          >
+                            <span className="priceComparisonStore">
+                              {storeLabels[storeKey]}
+                              {decision.selectedStoreKey === storeKey ? ' ✓' : ''}
+                            </span>
+                            {info ? (
+                              <>
+                                <span className="priceComparisonName">{info.productName}</span>
+                                <span className="priceComparisonPrice">
+                                  {formatMoney(info.packagePrice ?? null)}
+                                  {info.unitPriceLabel ? ` · ${info.unitPriceLabel}` : ''}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="priceComparisonName panelText">Aucune fiche comparable pour l’instant</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </details>
               <StoreOverrideControl
                 itemId={decision.itemId}
@@ -1298,6 +1389,8 @@ function StoreDecisionList({
                 storeCandidateIds={decision.storeCandidateIds}
                 candidateById={candidateById}
                 onCandidateConfirmed={onCandidateConfirmed}
+                onRejectCandidate={onRejectCandidate}
+                onForceStore={onForceStore}
               />
               <CandidateLinks candidate={candidate} experimentalAddToCart={experimentalAddToCart && trustAllowsActions} />
               <StoreCandidateLinks decision={decision} candidateById={candidateById} selectedCandidate={candidate} />
@@ -1493,6 +1586,8 @@ export function ValidationPanel({
                 storeCandidateIds={decision.storeCandidateIds}
                 candidateById={candidateById}
                 onCandidateConfirmed={onCandidateConfirmed}
+                onRejectCandidate={onRejectCandidate}
+                onForceStore={onForceStore}
               />
               <details className="comparisonDecisionAdvanced">
                 <summary>Options avancées</summary>
@@ -1592,7 +1687,9 @@ function ManualCorrectionControls({
   productBarcode,
   storeCandidateIds,
   candidateById,
-  onCandidateConfirmed
+  onCandidateConfirmed,
+  onRejectCandidate,
+  onForceStore
 }: {
   itemId: string;
   productId: string;
@@ -1610,6 +1707,8 @@ function ManualCorrectionControls({
   storeCandidateIds: Partial<Record<StoreKey, string>>;
   candidateById: Map<string, ProductCandidate>;
   onCandidateConfirmed: (itemId: string) => void;
+  onRejectCandidate: (candidateId: string) => void;
+  onForceStore: (itemId: string, storeKey: StoreKey | null) => void;
 }) {
   const leclerc = useStoreLivePick('leclerc', itemId, productId, productName, productBarcode, onCandidateConfirmed);
   const hyperU = useStoreLivePick('hyperu', itemId, productId, productName, productBarcode, onCandidateConfirmed);
@@ -1632,48 +1731,86 @@ function ManualCorrectionControls({
   const leclercFound = !leclercConfirmed && leclerc.status === 'idle' && Boolean(leclercCandidate);
   const hyperUFound = !hyperUConfirmed && hyperU.status === 'idle' && Boolean(hyperUCandidate);
 
+  // "Ce n'est pas le bon produit ici, je veux CE produit uniquement chez
+  // l'autre magasin" — demande explicite du 04/09 : jusque-là, la seule
+  // sortie était de retrouver soi-même le contrôle "Magasin forcé" dans
+  // "Options avancées", loin du bouton qui montre le mauvais produit. En un
+  // clic : verrouille l'autre magasin (forcedStoreKey, le moteur ne regarde
+  // plus que lui) ET rejette le candidat fautif de ce magasin (sinon il
+  // resterait proposé si le verrou est levé plus tard).
+  function excludeStore(storeToExclude: StoreKey) {
+    const other: StoreKey = storeToExclude === 'leclerc' ? 'hyperu' : 'leclerc';
+    const badCandidateId = storeCandidateIds[storeToExclude];
+    if (badCandidateId) onRejectCandidate(badCandidateId);
+    onForceStore(itemId, other);
+  }
+
   return (
     <div>
       <div className="cardActions">
-        <button
-          type="button"
-          className={
-            hyperUConfirmed ? 'secondaryButton successButton' : hyperUFound ? 'secondaryButton foundButton' : 'secondaryButton'
-          }
-          // Fiche déjà connue mais pas confirmée : on y amène directement
-          // (startUrl), comme "Voir le produit" ailleurs, plutôt que de
-          // rouvrir le catalogue vierge.
-          onClick={() => void hyperU.trigger(hyperUFound ? hyperUCandidate?.productUrl ?? hyperUCandidate?.searchUrl : undefined)}
-          disabled={hyperU.status === 'picking'}
-        >
-          {hyperU.status === 'picking'
-            ? 'En attente sur la page Hyper U...'
-            : hyperU.status === 'done'
-              ? '✓ Choisi sur la page Hyper U'
-              : hyperUConfirmed
-                ? '✓ Déjà trouvé chez Hyper U'
-                : hyperUFound
-                  ? '✓ Fiche trouvée chez Hyper U — à confirmer'
-                  : 'Choisir sur la page Hyper U'}
-        </button>
-        <button
-          type="button"
-          className={
-            leclercConfirmed ? 'secondaryButton successButton' : leclercFound ? 'secondaryButton foundButton' : 'secondaryButton'
-          }
-          onClick={() => void leclerc.trigger(leclercFound ? leclercCandidate?.productUrl ?? leclercCandidate?.searchUrl : undefined)}
-          disabled={leclerc.status === 'picking'}
-        >
-          {leclerc.status === 'picking'
-            ? 'En attente sur la page Leclerc...'
-            : leclerc.status === 'done'
-              ? '✓ Choisi sur la page Leclerc'
-              : leclercConfirmed
-                ? '✓ Déjà trouvé chez Leclerc'
-                : leclercFound
-                  ? '✓ Fiche trouvée chez Leclerc — à confirmer'
-                  : 'Choisir sur la page Leclerc'}
-        </button>
+        <div className="storeChoiceRow">
+          <button
+            type="button"
+            className={
+              hyperUConfirmed ? 'secondaryButton successButton' : hyperUFound ? 'secondaryButton foundButton' : 'secondaryButton'
+            }
+            // Fiche déjà connue mais pas confirmée : on y amène directement
+            // (startUrl), comme "Voir le produit" ailleurs, plutôt que de
+            // rouvrir le catalogue vierge.
+            onClick={() => void hyperU.trigger(hyperUFound ? hyperUCandidate?.productUrl ?? hyperUCandidate?.searchUrl : undefined)}
+            disabled={hyperU.status === 'picking'}
+          >
+            {hyperU.status === 'picking'
+              ? 'En attente sur la page Hyper U...'
+              : hyperU.status === 'done'
+                ? '✓ Choisi sur la page Hyper U'
+                : hyperUConfirmed
+                  ? '✓ Déjà trouvé chez Hyper U'
+                  : hyperUFound
+                    ? '✓ Fiche trouvée chez Hyper U — à confirmer'
+                    : 'Choisir sur la page Hyper U'}
+          </button>
+          <button
+            type="button"
+            className="rejectStoreButton"
+            onClick={() => excludeStore('hyperu')}
+            disabled={hyperU.status === 'picking' || leclerc.status === 'picking'}
+            title="Pas le bon produit chez Hyper U : forcer Leclerc uniquement"
+            aria-label="Pas le bon produit chez Hyper U : forcer Leclerc uniquement"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="storeChoiceRow">
+          <button
+            type="button"
+            className={
+              leclercConfirmed ? 'secondaryButton successButton' : leclercFound ? 'secondaryButton foundButton' : 'secondaryButton'
+            }
+            onClick={() => void leclerc.trigger(leclercFound ? leclercCandidate?.productUrl ?? leclercCandidate?.searchUrl : undefined)}
+            disabled={leclerc.status === 'picking'}
+          >
+            {leclerc.status === 'picking'
+              ? 'En attente sur la page Leclerc...'
+              : leclerc.status === 'done'
+                ? '✓ Choisi sur la page Leclerc'
+                : leclercConfirmed
+                  ? '✓ Déjà trouvé chez Leclerc'
+                  : leclercFound
+                    ? '✓ Fiche trouvée chez Leclerc — à confirmer'
+                    : 'Choisir sur la page Leclerc'}
+          </button>
+          <button
+            type="button"
+            className="rejectStoreButton"
+            onClick={() => excludeStore('leclerc')}
+            disabled={hyperU.status === 'picking' || leclerc.status === 'picking'}
+            title="Pas le bon produit chez Leclerc : forcer Hyper U uniquement"
+            aria-label="Pas le bon produit chez Leclerc : forcer Hyper U uniquement"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       {hyperU.status === 'picking' && (
         <p className="panelText">
@@ -1984,7 +2121,9 @@ function downloadCartFillDiagnostic(
 
   const payload = {
     format: 'drive-price-splitter-cart-fill-diagnostic',
-    formatVersion: 3,
+    // v4 (04/09) : ajoute requestedQuantity/finalQuantity/quantityConfirmed
+    // et directUrlAttempt à chaque ligne (voir CartFillResultLine).
+    formatVersion: 4,
     storeKey,
     createdAt: new Date().toISOString(),
     // Produits ajoutés dont le nom ne correspond PAS à celui validé au

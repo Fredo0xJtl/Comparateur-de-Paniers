@@ -55,6 +55,22 @@ export type ComparisonDecision = {
   // Leclerc" / "voir chez Hyper U" link without forcing the user through the
   // "magasin forcé" override just to look at the other store's product page.
   storeCandidateIds: Partial<Record<StoreKey, string>>;
+  // Prix (et prix au kilo/litre quand connu) chez CHAQUE magasin ayant une
+  // fiche comparable, indépendamment du choix final — retour explicite du
+  // 04/09 : "Voir le calcul de cette ligne" ne montrait que le prix du
+  // magasin retenu, impossible d'y vérifier soi-même le choix face à
+  // l'autre enseigne sans rouvrir les deux fiches.
+  priceComparisonByStore: Partial<Record<StoreKey, StorePriceComparison>>;
+};
+
+export type StorePriceComparison = {
+  productName: string;
+  // Prix du paquet tel que vendu (pas le total pour la quantité demandée).
+  packagePrice?: number;
+  // "3.42 €/kg" ou "1.10 €/L" quand la comparaison au poids/volume est
+  // possible (voir unitPriceArbitration.ts) — undefined si le format n'est
+  // pas connu ou pas comparable (ex. vendu à la pièce).
+  unitPriceLabel?: string;
 };
 
 export type ComparisonSignalCode =
@@ -320,6 +336,7 @@ function selectOptimizedDecision(
   // Base plus permissive, réservée à la COMPARAISON (jamais à la sélection
   // automatique) — voir bestComparableOptionPerStore juste plus bas.
   const comparableByStore = bestComparableOptionPerStore(options);
+  const priceComparisonByStore = buildPriceComparisonByStore(comparableByStore);
   const unitPriceArbitration = buildUnitPriceArbitration(comparableByStore);
   const formatMismatchWarnings = buildFormatMismatchWarnings(comparableByStore, unitPriceArbitration);
   const unitPriceEvidenceWarnings = buildUnitPriceEvidenceWarnings(bestByStore);
@@ -345,7 +362,8 @@ function selectOptimizedDecision(
         signals: applyWarningAcknowledgement(forced.signals, row.item),
         requiresValidation: false,
         alternates,
-        storeCandidateIds
+        storeCandidateIds,
+        priceComparisonByStore
       };
     }
   }
@@ -398,7 +416,8 @@ function selectOptimizedDecision(
           ),
       requiresValidation: !absenceConfirmed,
       alternates,
-      storeCandidateIds
+      storeCandidateIds,
+      priceComparisonByStore
     };
   }
 
@@ -446,7 +465,8 @@ function selectOptimizedDecision(
     ),
     requiresValidation: false,
     alternates,
-    storeCandidateIds
+    storeCandidateIds,
+    priceComparisonByStore
   };
 }
 
@@ -542,6 +562,35 @@ function bestComparableOptionPerStore(options: CandidateOption[]): Partial<Recor
     if (storeOptions.length === 1) {
       result[storeKey] = storeOptions[0];
     }
+  }
+
+  return result;
+}
+
+// Base sur comparableByStore (plus permissif que bestOptionPerStore) : on
+// veut pouvoir vérifier le calcul même pour un magasin dont le seul candidat
+// n'est pas encore assez fiable pour une sélection automatique — c'est
+// justement le cas où la vérification manuelle sert le plus.
+function buildPriceComparisonByStore(
+  comparableByStore: Partial<Record<StoreKey, CandidateOption>>
+): Partial<Record<StoreKey, StorePriceComparison>> {
+  const result: Partial<Record<StoreKey, StorePriceComparison>> = {};
+
+  for (const storeKey of STORE_KEYS) {
+    const option = comparableByStore[storeKey];
+    if (!option) continue;
+    const basis = resolveUnitPriceBasis({
+      priceEuro: option.snapshot?.price,
+      unitPriceEuro: option.snapshot?.unitPrice,
+      comparisonUnit: option.snapshot?.comparisonUnit,
+      quantity: option.candidate.quantity,
+      unit: option.candidate.unit
+    });
+    result[storeKey] = {
+      productName: option.candidate.name,
+      packagePrice: option.snapshot?.price,
+      unitPriceLabel: basis ? formatUnitPriceLabel(basis) : undefined
+    };
   }
 
   return result;
@@ -833,9 +882,13 @@ function buildOptionsForRow(row: ShoppingListRow, input: ComparisonInput): Candi
         signals.push({ code: 'PROMOTION_NOT_OPTIMIZED', severity: 'warning' });
       }
 
-      // Signalement uniquement : le verdict ne participe ni à la confiance
-      // ni à requiresValidation. Le prix reste utilisable dans les totaux,
-      // conformément à la règle « avertir, jamais bloquer ».
+      // Bloquant, mais levable : un écart entre le prix affiché et le prix au
+      // litre/kilo signale soit une erreur de collecte, soit une fiche magasin
+      // incohérente — dans les deux cas le total serait faux. La validation est
+      // donc bloquée tant que l'utilisateur n'a pas vérifié la ligne sur la
+      // fiche du magasin ; il lève alors l'alerte, qui repasse en simple
+      // avertissement (ACKNOWLEDGEABLE_SIGNAL_CODES, plus bas). Le prix reste
+      // utilisé dans les totaux dans tous les cas.
       if (snapshot?.priceCoherence === 'mismatch') {
         warnings.push('Prix incohérent avec le prix au litre/kilo affiché — à vérifier.');
         signals.push({ code: 'PRICE_MISMATCH', severity: 'blocking' });

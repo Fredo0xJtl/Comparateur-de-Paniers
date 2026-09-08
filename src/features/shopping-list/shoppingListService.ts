@@ -60,7 +60,8 @@ export async function addProductToActiveList(productId: string) {
 
   if (existing) {
     await db.shoppingListItems.update(existing.id, {
-      wantedQuantity: existing.wantedQuantity + 1
+      wantedQuantity: existing.wantedQuantity + 1,
+      updatedAt: new Date().toISOString()
     });
     await touchList(list.id);
     return;
@@ -71,7 +72,8 @@ export async function addProductToActiveList(productId: string) {
     shoppingListId: list.id,
     productId,
     wantedQuantity: 1,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
   await touchList(list.id);
 }
@@ -83,7 +85,7 @@ export async function updateShoppingListItemQuantity(itemId: string, wantedQuant
     return;
   }
 
-  await db.shoppingListItems.update(itemId, { wantedQuantity: safeQuantity });
+  await db.shoppingListItems.update(itemId, { wantedQuantity: safeQuantity, updatedAt: new Date().toISOString() });
   await touchList(item.shoppingListId);
 }
 
@@ -95,9 +97,9 @@ export async function setShoppingListItemStoreOverride(itemId: string, storeKey:
 
   if (storeKey === null) {
     const { forcedStoreKey: _removed, ...rest } = item;
-    await db.shoppingListItems.put(rest);
+    await db.shoppingListItems.put({ ...rest, updatedAt: new Date().toISOString() });
   } else {
-    await db.shoppingListItems.update(itemId, { forcedStoreKey: storeKey });
+    await db.shoppingListItems.update(itemId, { forcedStoreKey: storeKey, updatedAt: new Date().toISOString() });
   }
   await touchList(item.shoppingListId);
 }
@@ -110,9 +112,9 @@ export async function setShoppingListItemCandidateOverride(itemId: string, candi
 
   if (candidateId === null) {
     const { forcedCandidateId: _removed, ...rest } = item;
-    await db.shoppingListItems.put(rest);
+    await db.shoppingListItems.put({ ...rest, updatedAt: new Date().toISOString() });
   } else {
-    await db.shoppingListItems.update(itemId, { forcedCandidateId: candidateId });
+    await db.shoppingListItems.update(itemId, { forcedCandidateId: candidateId, updatedAt: new Date().toISOString() });
   }
   await touchList(item.shoppingListId);
 }
@@ -131,9 +133,12 @@ export async function setShoppingListItemWarningsAcknowledged(itemId: string, ac
 
   if (!acknowledged) {
     const { checkedDespiteWarningsAt: _removed, ...rest } = item;
-    await db.shoppingListItems.put(rest);
+    await db.shoppingListItems.put({ ...rest, updatedAt: new Date().toISOString() });
   } else {
-    await db.shoppingListItems.update(itemId, { checkedDespiteWarningsAt: new Date().toISOString() });
+    await db.shoppingListItems.update(itemId, {
+      checkedDespiteWarningsAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
   }
   await touchList(item.shoppingListId);
 }

@@ -22,7 +22,7 @@ describe('configureBridgeOrigins', () => {
   it('génère les origines de test depuis la machine au lieu de figer une IP personnelle', () => {
     const configured = configureBridgeOrigins(manifest, { dev: true, lanAddresses: ['192.168.99.18'] });
     expect(configured.name).toBe('Drive Price Splitter Connector (dev)');
-    expect(configured.browser_specific_settings.gecko.id).toBe('drive-price-splitter-dev@fredo0xjtl.github.io');
+    expect(configured.browser_specific_settings.gecko.id).toBe('drive-price-splitter-localtest@fredo0xjtl.github.io');
     expect(configured.host_permissions).toEqual(expect.arrayContaining([
       'https://*.leclercdrive.fr/*',
       'https://192.168.99.18/*'

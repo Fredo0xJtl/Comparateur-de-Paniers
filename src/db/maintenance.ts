@@ -20,7 +20,8 @@ export async function wipeAllLocalData(): Promise<void> {
       db.driveSearchMemory,
       db.validatedBaskets,
       db.productCache,
-      db.driveManualOverrides
+      db.driveManualOverrides,
+      db.syncCursors
     ],
     async () => {
       await Promise.all([
@@ -35,7 +36,8 @@ export async function wipeAllLocalData(): Promise<void> {
         db.driveSearchMemory.clear(),
         db.validatedBaskets.clear(),
         db.productCache.clear(),
-        db.driveManualOverrides.clear()
+        db.driveManualOverrides.clear(),
+        db.syncCursors.clear()
       ]);
     }
   );

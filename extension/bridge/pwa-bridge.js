@@ -106,7 +106,9 @@ function wireBridgeIfOwnApp() {
       'DRIVE_ADD_TO_CART_CANCEL',
       'DRIVE_FETCH_CART_REPORT',
       'DRIVE_LIVE_PICK_START',
-      'DRIVE_LIVE_PICK_CANCEL'
+      'DRIVE_LIVE_PICK_CANCEL',
+      'DRIVE_IMPORT_LIST_START',
+      'DRIVE_IMPORT_LIST_CANCEL'
     ]);
     if (!allowedTypes.has(event.data.type)) return;
 
@@ -137,7 +139,12 @@ function wireBridgeIfOwnApp() {
   // running collection, not a reply to a specific request) — relay them
   // straight to the page. No nonce here since there's no matching request to
   // tie it back to; the page correlates by jobId instead.
-  const relayedProgressTypes = new Set(['DRIVE_REFRESH_PROGRESS', 'DRIVE_ADD_TO_CART_PROGRESS', 'DRIVE_LIVE_PICK_PROGRESS']);
+  const relayedProgressTypes = new Set([
+    'DRIVE_REFRESH_PROGRESS',
+    'DRIVE_ADD_TO_CART_PROGRESS',
+    'DRIVE_LIVE_PICK_PROGRESS',
+    'DRIVE_IMPORT_LIST_PROGRESS'
+  ]);
   runtime.runtime.onMessage.addListener((message) => {
     if (message?.source !== EXTENSION_SOURCE || !relayedProgressTypes.has(message?.type)) return;
     window.postMessage(

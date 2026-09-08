@@ -477,6 +477,13 @@ export type DriveAddToCartResultV1 = {
   // atterri sur la mauvaise fiche/carte malgré un statut "added" correct.
   matchedName?: string;
   matchedPriceEuro?: number;
+  // Ajoutés le 04/09 (voir CartFillResultLine côté cartFillService.ts) :
+  // quantité réellement confirmée dans le panier, et motif du refus de la
+  // tentative directe par URL quand le repli par recherche échoue aussi.
+  requestedQuantity?: number;
+  finalQuantity?: number;
+  quantityConfirmed?: boolean;
+  directUrlAttempt?: { code?: string };
 };
 
 // --- Live pick job (Leclerc manual correction) ---
@@ -555,3 +562,75 @@ function isOptionalUnitPriceUnit(value: unknown): boolean {
 function isOptionalProductUnit(value: unknown): boolean {
   return value === undefined || ['L', 'ml', 'kg', 'g', 'unit'].includes(value as string);
 }
+
+// ---------------------------------------------------------------------------
+// Import des listes/favoris déjà enregistrés sur le compte de l'utilisateur
+// (Leclerc « produits habituels », Courses U « Mes Listes »).
+//
+// Rien à voir avec la comparaison de prix : aucun produit local n'est cherché,
+// aucun panier n'est touché. L'extension ouvre UNE page de compte, la lit, et
+// renvoie ce qu'elle contient — l'utilisateur valide ensuite l'import dans la
+// PWA (voir src/features/list-import/).
+// ---------------------------------------------------------------------------
+
+export type DriveListImportJobV1 = {
+  protocolVersion: 1;
+  jobId: string;
+  requestedAt: string;
+  store: DriveJobStoreV1;
+  // URL d'une liste précise, choisie par l'utilisateur quand son compte
+  // Courses U en porte plusieurs (code COURSESU_PICK_LIST). Absente au premier
+  // appel : l'extension ouvre alors la page de compte par défaut.
+  listUrl?: string;
+};
+
+// Un produit lu sur la page de compte. Volontairement le même vocabulaire que
+// les observations de prix (name/brand/barcode/priceEuro...), les deux venant
+// des mêmes lecteurs de cartes — mais ce n'est PAS une observation de prix :
+// rien ici n'alimente la comparaison, ces champs ne servent qu'à créer ou
+// reconnaître une fiche produit locale.
+export type DriveImportedItemV1 = {
+  name: string;
+  brand?: string;
+  barcode?: string;
+  externalProductId?: string;
+  priceEuro?: number;
+  unitPriceEuro?: number;
+  unitPriceUnit?: string;
+  quantity?: number;
+  category?: string;
+  imageUrl?: string;
+  productUrl?: string;
+  available?: boolean;
+};
+
+export type DriveListImportReportV1 =
+  | {
+      ok: true;
+      storeKey: StoreKey;
+      sourceUrl?: string;
+      listName?: string;
+      items: DriveImportedItemV1[];
+      // L'import a abouti mais reste incomplet (rayons Leclerc introuvables ou
+      // sautés) : l'écran d'import doit le dire, sans quoi l'utilisateur croit
+      // avoir tout récupéré.
+      partial?: boolean;
+      partialReason?: string;
+      // Vrai quand le lecteur a dû retomber sur son sélecteur de repli, signe
+      // que la structure du site a probablement changé.
+      usedFallbackSelector?: boolean;
+      departmentsVisited?: Array<{ label: string; itemCount: number }>;
+      skippedDepartments?: Array<{ label: string; code: string }>;
+    }
+  | {
+      ok: false;
+      storeKey: StoreKey;
+      code: string;
+      sourceUrl?: string;
+      details?: {
+        // COURSESU_PICK_LIST : les listes trouvées sur le compte, à faire
+        // choisir à l'utilisateur avant de relancer l'import.
+        lists?: Array<{ name: string; url: string }>;
+        [key: string]: unknown;
+      };
+    };

@@ -903,16 +903,24 @@ describe('chooseCoursesUProduct — cohérence de format cross-store', () => {
     expect(result.observedUnit).toBe('g');
   });
 
-  it('sans format cible connu, garde le comportement précédent (meilleur score de nom seul)', () => {
-    const result = chooseCoursesUProduct(
-      { name: 'Purée Mousline', brand: 'Mousline' },
-      [
-        { name: 'Purée Mousline nature 375g', priceEuro: 1.6, productUrl: 'https://www.coursesu.com/p/mousline-375.html' },
-        { name: 'Purée Mousline nature 1kg', priceEuro: 2.9, productUrl: 'https://www.coursesu.com/p/mousline-1kg.html' }
-      ]
-    );
-    expect(result).not.toBeNull();
-    expect(result.productUrl).toBe('https://www.coursesu.com/p/mousline-375.html');
+  it('sans format cible connu, départage les scores ex æquo de façon déterministe (indépendante de l’ordre des candidats)', () => {
+    // Diagnostic réel (04/09/2026) : un même scan relancé sur les mêmes
+    // produits pouvait retenir un candidat différent d'une fois sur l'autre.
+    // Cause : à score de nom identique, le tri ne départageait qu'avec
+    // l'ordre d'arrivée des candidats dans le DOM du site — non garanti
+    // stable d'un scan à l'autre. Ce test vérifie que l'ordre d'entrée du
+    // tableau n'influence plus le résultat : les deux candidats ci-dessous,
+    // fournis dans les deux ordres possibles, doivent toujours désigner le
+    // même gagnant.
+    const candidates = [
+      { name: 'Purée Mousline nature 375g', priceEuro: 1.6, productUrl: 'https://www.coursesu.com/p/mousline-375.html' },
+      { name: 'Purée Mousline nature 1kg', priceEuro: 2.9, productUrl: 'https://www.coursesu.com/p/mousline-1kg.html' }
+    ];
+    const product = { name: 'Purée Mousline', brand: 'Mousline' };
+    const forward = chooseCoursesUProduct(product, candidates);
+    const reversed = chooseCoursesUProduct(product, [...candidates].reverse());
+    expect(forward).not.toBeNull();
+    expect(forward.productUrl).toBe(reversed.productUrl);
   });
 
   it('remonte le format observé même sans format cible', () => {

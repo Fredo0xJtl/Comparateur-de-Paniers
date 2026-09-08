@@ -177,6 +177,12 @@ export interface ShoppingListItem {
   // une fois que l'utilisateur a vérifié la fiche de ses yeux. Horodaté pour
   // que la levée reste traçable dans l'export de preuve.
   checkedDespiteWarningsAt?: string;
+  // Ajouté pour la synchronisation multi-appareils (voir features/sync) :
+  // horodatage de la dernière modification de CETTE ligne, mis à jour à
+  // chaque écriture dans shoppingListService.ts. Optionnel pour qu'une base
+  // déjà installée reste valable sans migration — une ligne sans ce champ
+  // est traitée comme "très ancienne" par la synchronisation.
+  updatedAt?: string;
 }
 
 export type ValidatedBasketItem = {
@@ -226,6 +232,12 @@ export interface ValidatedBasket {
   // redemander à l'extension le rapport final déjà terminé au lieu de rester
   // bloqué sur `not_attempted` pour toujours. Voir cartFillJobRecovery.ts.
   cartFillJobId?: string;
+  // Ajouté pour la synchronisation multi-appareils (voir features/sync) :
+  // horodatage de la dernière modification (création, statut de
+  // remplissage, confirmation de réalisation...), mis à jour à chaque
+  // écriture dans basketHistoryService.ts. Optionnel pour qu'une base déjà
+  // installée reste valable sans migration.
+  updatedAt?: string;
 }
 
 export interface UserSettings {

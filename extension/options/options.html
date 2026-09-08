@@ -19,7 +19,56 @@
         <dd>E.Leclerc Drive et Courses U</dd>
       </dl>
       <p id="status" role="status">Vérification de l’extension...</p>
+
+      <section aria-labelledby="sites-titre">
+        <h2 id="sites-titre">Où l’extension est active</h2>
+
+        <p class="aide">
+          L’extension ne se connecte qu’aux adresses listées ci-dessous, et à aucune autre page que vous
+          visitez.
+        </p>
+
+        <h3>Adresse officielle</h3>
+        <ul id="builtin-origins" class="liste-origines">
+          <li>Chargement…</li>
+        </ul>
+        <p class="aide">
+          Fournie avec l’extension : rien à faire si vous utilisez le Comparateur de Paniers en ligne.
+        </p>
+
+        <h3>Votre propre installation</h3>
+        <p class="aide">
+          Uniquement si vous hébergez le Comparateur de Paniers vous-même — sur votre ordinateur, un NAS, un
+          Raspberry Pi ou votre propre nom de domaine. Ouvrez-le dans un onglet, copiez l’adresse affichée
+          dans la barre du navigateur, et collez-la ici. Firefox vous demandera alors votre accord pour cette
+          adresse, et pour elle seule.
+        </p>
+
+        <form id="ajout-origine">
+          <label for="champ-origine">Adresse de votre installation</label>
+          <input
+            id="champ-origine"
+            name="origine"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://mon-serveur.local:8443"
+          />
+          <button type="submit">Autoriser cette adresse</button>
+        </form>
+        <p id="origine-message" role="status" class="message"></p>
+
+        <ul id="custom-origins" class="liste-origines"></ul>
+        <p id="custom-origins-vide" class="aide">Aucune adresse personnelle autorisée.</p>
+
+        <p class="aide">
+          Les adresses en <code>http://</code> ne sont acceptées que sur cet ordinateur
+          (<code>localhost</code>). Ailleurs, la page circule en clair sur le réseau et pourrait être imitée :
+          utilisez <code>https://</code>.
+        </p>
+      </section>
     </main>
-    <script src="options.js"></script>
+    <script src="options.js" type="module"></script>
   </body>
 </html>

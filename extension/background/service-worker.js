@@ -1,9 +1,16 @@
 import { createDriveJobRunner, recoverInterruptedJob } from './job-runner.js';
-import { validateDriveRefreshJob, validateDriveAddToCartJob, validateDriveLivePickJob } from '../shared/drive-protocol.js';
+import { createListImportRunner } from './list-import-runner.js';
+import {
+  validateDriveRefreshJob,
+  validateDriveAddToCartJob,
+  validateDriveLivePickJob,
+  validateDriveListImportJob
+} from '../shared/drive-protocol.js';
 import { collectLeclercStore, addToCartLeclercStore, livePickLeclercProduct } from '../adapters/leclerc/leclerc-collector.js';
 import { collectCoursesUStore, addToCartCoursesUStore, livePickCoursesUProduct } from '../adapters/courses-u/courses-u-collector.js';
 import { isAllowedOrigin } from '../shared/origin-allowlist.js';
 import { BRIDGE_ORIGIN_PATTERNS } from '../shared/bridge-origins.js';
+import { CUSTOM_ORIGINS_STORAGE_KEY, readCustomOrigins } from '../shared/custom-origins.js';
 import { loadVerboseDiagnosticsFlag } from '../shared/verbose-diagnostics.js';
 
 // Firefox exposes a promise-based `browser` namespace; Chrome/Chromium only has
@@ -68,16 +75,89 @@ function getAllowedOrigins() {
   return contentScripts.flatMap((entry) => entry.matches ?? []);
 }
 
-function isAllowedSender(sender) {
-  let origin = sender?.origin ?? null;
-  if (!origin && sender?.url) {
+function senderOrigin(sender) {
+  const origin = sender?.origin ?? null;
+  if (origin) return origin;
+  if (!sender?.url) return null;
+  try {
+    return new URL(sender.url).origin;
+  } catch {
+    return null;
+  }
+}
+
+// Origines livrées dans le paquet : l'adresse publique du Comparateur de
+// Paniers, plus les origines de développement d'un build `--dev`. C'est le
+// chemin de la quasi-totalité des messages, et il reste strictement
+// synchrone — donc sans le moindre changement de comportement pour ceux qui
+// utilisent le site public.
+function isAllowedSenderSync(sender) {
+  return isAllowedOrigin(senderOrigin(sender), getAllowedOrigins());
+}
+
+// Adresse déclarée par l'utilisateur lui-même dans la page d'options, pour
+// une installation qu'il héberge (ordinateur, NAS, Raspberry Pi, domaine
+// personnel). Deux conditions cumulatives, et non une seule :
+//   1. l'origine figure dans la liste enregistrée (storage.local) ;
+//   2. Firefox confirme que la permission d'hôte correspondante est
+//      RÉELLEMENT accordée.
+// La seconde rattrape le cas où l'utilisateur retire la permission depuis
+// « Gérer les extensions » sans passer par notre page d'options : le
+// stockage, lui, n'en saurait rien.
+async function isAllowedSenderCustom(sender) {
+  const origin = senderOrigin(sender);
+  if (!origin) return false;
+  const entries = await readCustomOrigins(runtime.storage.local);
+  const entry = entries.find((item) => isAllowedOrigin(origin, [item.runtimePattern]));
+  if (!entry) return false;
+  try {
+    return await runtime.permissions.contains({ origins: [entry.hostPattern] });
+  } catch {
+    return false;
+  }
+}
+
+// Enregistre le pont sur les adresses déclarées par l'utilisateur. Rejoué à
+// chaque démarrage du service worker : les scripts enregistrés à l'exécution
+// ne survivent pas forcément à un redémarrage du navigateur, alors que les
+// permissions accordées, elles, sont persistantes — sans ce rejeu, la PWA
+// auto-hébergée afficherait « Extension Drive indisponible » après chaque
+// redémarrage, de façon parfaitement silencieuse.
+const CUSTOM_BRIDGE_SCRIPT_ID = 'custom-origin-bridge';
+
+async function syncCustomOriginContentScripts() {
+  const entries = await readCustomOrigins(runtime.storage.local);
+  const granted = [];
+  for (const entry of entries) {
     try {
-      origin = new URL(sender.url).origin;
+      if (await runtime.permissions.contains({ origins: [entry.hostPattern] })) granted.push(entry.hostPattern);
     } catch {
-      origin = null;
+      // Permission illisible : on n'enregistre rien pour cette adresse.
+      // Défaut sûr — le pont manquant se voit et se corrige, un pont de trop
+      // ne se voit pas.
     }
   }
-  return isAllowedOrigin(origin, getAllowedOrigins());
+  const unique = [...new Set(granted)];
+  try {
+    await runtime.scripting.unregisterContentScripts({ ids: [CUSTOM_BRIDGE_SCRIPT_ID] });
+  } catch {
+    // Rien d'enregistré (premier démarrage, ou liste devenue vide) : c'est le
+    // cas normal, pas une erreur.
+  }
+  if (unique.length === 0) return;
+  try {
+    await runtime.scripting.registerContentScripts([
+      {
+        id: CUSTOM_BRIDGE_SCRIPT_ID,
+        matches: unique,
+        js: ['bridge/pwa-bridge.js'],
+        runAt: 'document_start'
+      }
+    ]);
+  } catch {
+    // Un motif refusé ne doit pas empêcher l'extension de fonctionner sur
+    // l'adresse publique, qui reste déclarée dans le manifest.
+  }
 }
 
 // Ce worker peut être déchargé à tout moment entre deux messages (MV3). S'il
@@ -94,6 +174,25 @@ recoverInterruptedJob({
 // messages) — reste OFF par défaut tant qu'il n'a jamais été activé
 // explicitement. Voir extension/shared/verbose-diagnostics.js.
 loadVerboseDiagnosticsFlag(runtime.storage.local).catch(() => undefined);
+
+// Même raison : le service worker est déchargé entre deux messages, et les
+// scripts enregistrés à l'exécution peuvent avoir disparu. On les remet en
+// place au réveil, puis à chaque fois que la page d'options modifie la liste
+// ou que Firefox retire une permission (« Gérer les extensions »).
+syncCustomOriginContentScripts().catch(() => undefined);
+
+runtime.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !(CUSTOM_ORIGINS_STORAGE_KEY in changes)) return;
+  syncCustomOriginContentScripts().catch(() => undefined);
+});
+
+runtime.permissions.onAdded?.addListener(() => {
+  syncCustomOriginContentScripts().catch(() => undefined);
+});
+
+runtime.permissions.onRemoved?.addListener(() => {
+  syncCustomOriginContentScripts().catch(() => undefined);
+});
 
 const runner = createDriveJobRunner({
   tabs: runtime.tabs,
@@ -201,6 +300,14 @@ const livePickRunner = createDriveJobRunner({
   }
 });
 
+// Import des listes/favoris de compte : cycle de vie beaucoup plus court que
+// les trois runners ci-dessus (un onglet, une lecture, un résultat), d'où un
+// runner autonome plutôt qu'une quatrième instance du pipeline de collecte.
+const listImportRunner = createListImportRunner({
+  tabs: runtime.tabs,
+  scripting: runtime.scripting
+});
+
 // On Android, a tab can briefly report status "complete" on an intermediate
 // hop (e.g. a client-side redirect) before reaching the final store domain.
 // Waiting for the URL to match the expected host too avoids racing
@@ -226,29 +333,12 @@ function matchesHost(url, expectedHost) {
   }
 }
 
-runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === 'DRIVE_CONNECTOR_STATUS') {
-    sendResponse({
-      available: true,
-      protocolVersion: 1,
-      extensionVersion: runtime.runtime.getManifest().version
-    });
-    return false;
-  }
-
-  // Tout le reste du protocole (démarrage/annulation de collecte, ajout au
-  // panier, sélection manuelle, lecture d'un rapport déjà stocké) ne doit
-  // jamais être déclenchable par une page qui n'est pas une origine où le
-  // bridge a réellement été injecté — sinon n'importe quelle page ouverte
-  // dans une origine autorisée pourrait faire agir l'extension avec la
-  // session authentifiée réelle de l'utilisateur sur les sites des
-  // enseignes. Échec silencieux (pas de sendResponse) : comportement
-  // indiscernable d'un type de message inconnu, pour ne rien révéler à
-  // l'appelant rejeté.
-  if (!isAllowedSender(sender)) {
-    return false;
-  }
-
+// Tout le protocole utile, une fois l'origine de l'appelant vérifiée. Séparé
+// du listener parce que cette vérification a deux chemins : un synchrone (les
+// origines livrées dans le paquet) et un asynchrone (l'adresse déclarée par
+// l'utilisateur, qu'il faut lire dans le stockage et confirmer auprès de
+// Firefox). Le corps, lui, est rigoureusement le même dans les deux cas.
+function dispatchDriveMessage(message, sender, sendResponse) {
   if (message?.type === 'DRIVE_REFRESH_START') {
     try {
       validateDriveRefreshJob(message.job);
@@ -413,5 +503,101 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // Import des listes/favoris de compte. Runner distinct des trois ci-dessus
+  // (voir list-import-runner.js) : aucune file de magasins, aucun disjoncteur,
+  // aucun panier touché — un onglet, une lecture, un résultat.
+  if (message?.type === 'DRIVE_IMPORT_LIST_START') {
+    try {
+      validateDriveListImportJob(message.job);
+      const pwaTabId = sender.tab?.id;
+      const onProgress = (progress) => {
+        if (!Number.isInteger(pwaTabId)) return;
+        runtime.tabs
+          .sendMessage(pwaTabId, {
+            source: 'drive-price-splitter-extension',
+            type: 'DRIVE_IMPORT_LIST_PROGRESS',
+            jobId: message.job.jobId,
+            progress
+          })
+          .catch(() => undefined);
+      };
+      listImportRunner.start(message.job, onProgress).then(
+        (report) =>
+          sendResponse({
+            accepted: true,
+            extensionVersion: runtime.runtime.getManifest().version,
+            report
+          }),
+        (error) =>
+          sendResponse({
+            accepted: false,
+            reason: error instanceof Error ? error.message : "L'import de liste n'a pas pu démarrer."
+          })
+      );
+    } catch {
+      sendResponse({ accepted: false, reason: "Tâche d'import de liste invalide." });
+      return false;
+    }
+    return true;
+  }
+
+  if (message?.type === 'DRIVE_IMPORT_LIST_CANCEL') {
+    sendResponse({ cancelled: listImportRunner.cancel(message.jobId) });
+    return false;
+  }
+
   return false;
+}
+
+runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'DRIVE_CONNECTOR_STATUS') {
+    sendResponse({
+      available: true,
+      protocolVersion: 1,
+      extensionVersion: runtime.runtime.getManifest().version
+    });
+    return false;
+  }
+
+  // Tout le reste du protocole (démarrage/annulation de collecte, ajout au
+  // panier, sélection manuelle, lecture d'un rapport déjà stocké) ne doit
+  // jamais être déclenchable par une page qui n'est pas une origine où le
+  // bridge a réellement été injecté — sinon n'importe quelle page ouverte
+  // dans une origine autorisée pourrait faire agir l'extension avec la
+  // session authentifiée réelle de l'utilisateur sur les sites des
+  // enseignes. Échec silencieux (pas de sendResponse) : comportement
+  // indiscernable d'un type de message inconnu, pour ne rien révéler à
+  // l'appelant rejeté.
+  if (isAllowedSenderSync(sender)) {
+    return dispatchDriveMessage(message, sender, sendResponse);
+  }
+
+  // Hors des origines livrées dans le paquet, il reste une possibilité
+  // légitime : une adresse que l'utilisateur a lui-même déclarée dans la page
+  // d'options pour son installation auto-hébergée. La vérifier suppose de
+  // lire le stockage et d'interroger Firefox, donc d'attendre — d'où le
+  // `return true`, qui garde le canal de réponse ouvert le temps de trancher.
+  // Ce chemin ne concerne que ces installations : celles qui utilisent
+  // l'adresse publique passent par la branche synchrone ci-dessus et ne
+  // subissent aucune attente.
+  //
+  // Le canal ouvert doit être refermé dans TOUS les cas, y compris au refus :
+  // une promesse laissée en suspens côté page ne remonte aucune erreur, donc
+  // l'interface resterait indéfiniment sur « en cours » au lieu d'afficher
+  // « Extension Drive indisponible » — la panne la plus difficile à
+  // diagnostiquer pour quelqu'un qui héberge l'application lui-même. Une
+  // réponse vide ne révèle rien de plus qu'un silence à un appelant rejeté.
+  isAllowedSenderCustom(sender)
+    .then((allowed) => {
+      if (!allowed) {
+        sendResponse(undefined);
+        return;
+      }
+      // `dispatchDriveMessage` renvoie `false` sur un type de message inconnu :
+      // sa valeur de retour ne sert plus à rien ici (le listener a déjà rendu
+      // `true`), c'est donc à nous de refermer le canal.
+      if (!dispatchDriveMessage(message, sender, sendResponse)) sendResponse(undefined);
+    })
+    .catch(() => sendResponse(undefined));
+  return true;
 });
