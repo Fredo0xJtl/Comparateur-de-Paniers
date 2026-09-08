@@ -56,13 +56,11 @@ import type { TrustIssue } from '../features/comparison/trustAssessment';
 import { storeLabels } from '../features/stores/storeLabels';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
-type RefreshStatus = 'idle' | 'refreshing' | 'error';
 type DriveRefreshStatus = 'idle' | 'refreshing' | 'done' | 'error';
 type ValidateStatus = 'idle' | 'validating' | 'done' | 'error';
 
 export function ComparePage() {
   const [status, setStatus] = useState<LoadStatus>('loading');
-  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
   const [refreshMessage, setRefreshMessage] = useState('');
   const [comparison, setComparison] = useState<ActiveComparison | null>(null);
   const [savingThresholdEuro, setSavingThresholdEuro] = useState(3);
@@ -119,19 +117,16 @@ export function ComparePage() {
 
     async function load() {
       try {
-        setRefreshStatus('refreshing');
         const loadedComparison = await loadActiveComparison({ refreshPrices: true });
         if (!ignore) {
           setComparison(loadedComparison);
           setSavingThresholdEuro(loadedComparison.settings.savingThresholdEuro);
           setThresholdText(String(loadedComparison.settings.savingThresholdEuro));
           setStatus('ready');
-          setRefreshStatus('idle');
         }
       } catch {
         if (!ignore) {
           setStatus('error');
-          setRefreshStatus('error');
           setRefreshMessage('Actualisation impossible. Les anciens prix locaux sont conservés.');
         }
       }
@@ -232,18 +227,22 @@ export function ComparePage() {
     }));
   }
 
-  async function handleRefreshPrices() {
-    setRefreshStatus('refreshing');
-    setRefreshMessage('');
-    try {
-      const loadedComparison = await loadActiveComparison({ refreshPrices: true });
-      setComparison(loadedComparison);
-      setStatus('ready');
-      setRefreshStatus('idle');
-    } catch {
-      setRefreshStatus('error');
-      setRefreshMessage('Actualisation impossible. Les anciens prix locaux sont conservés.');
-    }
+  // Enregistre le seuil saisi et le confirme à l'écran. Le classement, lui,
+  // est déjà recalculé à chaque frappe (le useMemo de `result` dépend de
+  // savingThresholdEuro) : ce bouton ne déclenche donc aucun traitement, il
+  // rend visible un enregistrement qui, sur mobile, se faisait sans que rien
+  // ne bouge — le champ garde le focus derrière le clavier virtuel, et
+  // l'événement `blur` qui affichait « ✓ Enregistré » n'arrivait jamais.
+  function handleApplyThreshold() {
+    const raw = thresholdText.trim();
+    const parsed = raw === '' ? 0 : Number(raw);
+    const normalized = Number.isNaN(parsed) ? savingThresholdEuro : Math.max(0, parsed);
+
+    setThresholdText(String(normalized));
+    setSavingThresholdEuro(normalized);
+    void updateSettings({ savingThresholdEuro: normalized });
+    setThresholdSaved(true);
+    setTimeout(() => setThresholdSaved(false), 2000);
   }
 
   async function handleDriveRefresh() {
@@ -660,28 +659,20 @@ export function ComparePage() {
                 </span>
               )}
             </label>
-            {/* Recalcule l'affichage avec le seuil qui vient d'être saisi. Ce
-                bouton n'affiche AUCUN rapport chiffré : la vérification locale
-                qu'il déclenche ne connaît que les prix de démonstration
-                (mockAdapterFactory), donc sur une vraie liste elle répondait
-                invariablement « 0 prix mis à jour, N non disponible(s) » — un
-                message que l'utilisateur lisait comme une panne. Le seul
-                rafraîchissement réel est « Actualiser les prix Drive ». */}
+            {/* Ce bouton n'interroge aucun magasin : il enregistre le seuil et
+                le confirme. Il déclenchait auparavant une « vérification
+                locale » qui ne consultait que les prix de démonstration
+                (mockAdapterFactory) — donc sur une vraie liste, toujours
+                « 0 prix mis à jour, N non disponible(s) », lu comme une panne.
+                Le seul rafraîchissement réel est « Actualiser les prix
+                Drive », plus bas. */}
             <div className="cardActions">
-              <button
-                className="secondaryButton"
-                type="button"
-                onClick={() => void handleRefreshPrices()}
-                disabled={refreshStatus === 'refreshing'}
-              >
-                {refreshStatus === 'refreshing' ? 'Mise à jour...' : 'Mettre à jour maintenant'}
+              <button className="secondaryButton" type="button" onClick={handleApplyThreshold}>
+                Appliquer ce seuil
               </button>
             </div>
-            {refreshMessage && (
-              <p className={refreshStatus === 'error' ? 'panelText panelTextDanger' : 'panelText'}>
-                {refreshMessage}
-              </p>
-            )}
+            {/* Seul message encore posté ici : l'échec du chargement initial. */}
+            {refreshMessage && <p className="panelText panelTextDanger">{refreshMessage}</p>}
             <div className="cardActions">
               <button
                 className="secondaryButton"
