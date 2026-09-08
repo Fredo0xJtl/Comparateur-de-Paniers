@@ -48,6 +48,14 @@ Les listes de courses et les sauvegardes peuvent révéler des habitudes, des ma
 
 Ne publie jamais, dans une issue ou un commit, de sauvegarde réelle, de capture d'écran contenant des données de courses personnelles, d'identifiants d'enseigne, de cookies, de sessions, de données de paiement ni d'adresses de magasin privées.
 
+### Le fichier de diagnostic
+
+Le bouton « Télécharger le diagnostic », sur la page Comparer, produit un fichier JSON destiné à comprendre pourquoi une collecte de prix a échoué. Il reste sur ton appareil : rien n'est envoyé automatiquement.
+
+Ce fichier contient le nom des produits relevés, les prix trouvés et l'adresse des fiches consultées — ces adresses identifient le drive, donc la zone où tu fais tes courses. **Il ne doit pas être publié dans une issue.**
+
+Pour signaler un problème, seuls le code d'erreur, le nom du produit concerné et l'enseigne sont demandés : ils suffisent presque toujours, et n'exposent pas ta liste. Si le fichier complet devient nécessaire, il est demandé explicitement, pour un envoi privé, et supprimé une fois le problème traité.
+
 ## Limites connues
 
 - Le stockage du navigateur est local mais pas garanti permanent : le navigateur ou l'appareil peuvent le vider.
