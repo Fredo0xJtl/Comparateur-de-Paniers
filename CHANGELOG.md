@@ -1,5 +1,9 @@
 # Changelog
 
+## Application - Page Comparer
+
+- **Retire le compte rendu trompeur affiché sous « Mettre à jour maintenant ».** Il annonçait invariablement « 0 prix mis à jour, N non disponible(s) » dès que la liste contenait de vrais produits, ce qui se lisait comme une panne sur l'écran même où s'affichent les économies. La cause : cette vérification ne consulte pas les magasins, elle relit des prix de démonstration figés dans le code, où aucun produit rapporté par le connecteur ne figure — le résultat ne pouvait donc jamais être autre chose que zéro. Le bouton reste en place : il recalcule l'affichage avec le seuil d'économie qui vient d'être saisi. Les vraies erreurs restent signalées, et le seul rafraîchissement qui interroge les magasins demeure « Actualiser les prix Drive ».
+
 ## Application - Accueil pour les nouveaux utilisateurs
 
 - **Une fenêtre d'accueil s'affiche à la première ouverture** et explique les trois choses à faire une seule fois : utiliser Firefox, ajouter le connecteur, se connecter à ses comptes magasins. Chaque étape indique où elle en est, et celles qui restent à faire portent un bouton qui y mène directement — dont le lien vers la page officielle du connecteur. Jusqu'ici, rien dans l'application ne disait qu'un connecteur était nécessaire : on ne l'apprenait qu'après avoir saisi une liste de courses entière, en voyant échouer le premier comparatif.
