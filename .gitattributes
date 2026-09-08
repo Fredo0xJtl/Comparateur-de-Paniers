@@ -1,2 +1,6 @@
 # Normalise les fins de ligne dans le depot (LF), quelle que soit la machine
 * text=auto
+
+# Les scripts shell restent en LF meme sur une machine Windows : un shebang
+# termine par CR rend build.sh inexecutable pour un reviseur Linux/macOS.
+*.sh text eol=lf
