@@ -35,7 +35,7 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "fake-indexeddb": "^6.2.5",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "vite-plugin-mkcert": "^2.1.0",
     "vitest": "^4.1.10"
   }
