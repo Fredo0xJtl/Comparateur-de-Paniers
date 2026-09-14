@@ -14,7 +14,7 @@ describe('PWA assets', () => {
     expect(manifest.name).toBe('Comparateur de Paniers');
     expect(manifest.short_name).toBe('Panier');
     expect(manifest.start_url).toBe('./');
-    expect(manifest.display).toBe('standalone');
+    expect(manifest.display).toBe('browser');
     expect(manifest.icons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
