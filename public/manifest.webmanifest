@@ -4,7 +4,7 @@
   "description": "Comparateur local de panier entre drives, sans compte ni automatisation cachée.",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#f7f7f2",
   "theme_color": "#24583a",
   "icons": [
