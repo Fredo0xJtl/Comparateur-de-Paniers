@@ -36,6 +36,12 @@ describe('PWA assets', () => {
     );
   });
 
+  it('does not turn a home-screen shortcut into a separate web app window', () => {
+    const indexHtml = readProjectFile('index.html');
+
+    expect(indexHtml).not.toMatch(/<link[^>]+rel=["']manifest["']/i);
+  });
+
   // Le manifeste est copié tel quel depuis public/ : Vite n'y réécrit aucun
   // chemin. Un chemin absolu y désignerait la racine du domaine, alors qu'une
   // publication GitHub Pages sert l'application sous `/<dépôt>/`. Les chemins
