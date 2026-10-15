@@ -413,9 +413,12 @@ export function ComparePage() {
     if (!result) return;
     if (!result.trustReport.canValidateBasket) {
       setValidateStatusByStore((current) => ({ ...current, [storeKey]: 'error' }));
+      const blockingIssue = result.trustReport.issues.find((issue) => issue.severity === 'blocking');
       setValidateMessageByStore((current) => ({
         ...current,
-        [storeKey]: 'Panier bloqué : corrige les anomalies critiques indiquées dans le niveau de confiance.'
+        [storeKey]: blockingIssue
+          ? `Panier bloqué : ${blockingIssue.message} Corrige cette anomalie dans le niveau de confiance avant de continuer.`
+          : 'Panier bloqué : corrige les anomalies critiques indiquées dans le niveau de confiance.'
       }));
       return;
     }
@@ -1180,8 +1183,8 @@ function StoreDecisionList({
             className="primaryButton"
             type="button"
             onClick={() => onValidate(storeKey)}
-            disabled={validateStatus === 'validating' || !trustAllowsActions}
-            title={!trustAllowsActions ? 'Corrige d’abord les anomalies critiques du calcul.' : undefined}
+            disabled={validateStatus === 'validating'}
+            title={!trustAllowsActions ? 'Clique pour afficher la raison du blocage.' : undefined}
           >
             {validateStatus === 'validating'
               ? 'Validation en cours...'
