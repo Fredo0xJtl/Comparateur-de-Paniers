@@ -207,8 +207,29 @@ async function buildManualUrlOverrides(
       .equals(storeKey)
       .filter((entry) => productIds.includes(entry.productId))
       .toArray();
-    if (entries.length === 0) continue;
-    overrides[storeKey] = Object.fromEntries(entries.map((entry) => [entry.productId, entry.productUrl]));
+    const urlsByProductId = Object.fromEntries(entries.map((entry) => [entry.productId, entry.productUrl]));
+
+    // Compatibilité avec les candidats confirmés à la main avant que leur
+    // permalien soit copié dans driveManualOverrides. Sans ce repli, ils
+    // partent dans la recherche automatique ; persistDriveObservation protège
+    // alors le candidat manuel en ignorant aussi son nouveau snapshot de prix,
+    // ce qui laisse le blocage « prix à actualiser » après un scan réussi.
+    const manualCandidates = await db.productCandidates
+      .where('storeKey')
+      .equals(storeKey)
+      .filter((candidate) =>
+        productIds.includes(candidate.productId) &&
+        candidate.matchType === 'manual_override' &&
+        !candidate.isAlternate &&
+        !urlsByProductId[candidate.productId] &&
+        Boolean(candidate.productUrl && isRefreshableProductUrl(candidate.productUrl, storeKey))
+      )
+      .toArray();
+    for (const candidate of manualCandidates) {
+      if (candidate.productUrl) urlsByProductId[candidate.productId] = candidate.productUrl;
+    }
+
+    if (Object.keys(urlsByProductId).length > 0) overrides[storeKey] = urlsByProductId;
   }
   return overrides;
 }
