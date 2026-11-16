@@ -22,8 +22,8 @@ const allowedHosts = new Set([
 // Firefox ne les demande que lorsque l'utilisateur déclare lui-même
 // l'adresse de son installation auto-hébergée dans la page d'options, et
 // uniquement pour cette adresse-là (`permissions.request`). Elles sont
-// nécessaires parce qu'une adresse privée (ordinateur, NAS, Raspberry Pi,
-// domaine personnel) ne peut par définition pas figurer dans un paquet
+// nécessaires parce qu'une adresse locale ou un domaine personnel ne peut
+// par définition pas figurer dans un paquet
 // distribué — voir extension/shared/custom-origins.js.
 //
 // La liste est verrouillée ici pour deux raisons :
@@ -95,6 +95,24 @@ export function validateExtensionManifest(manifest) {
   return errors;
 }
 
+export function validateChromiumManifest(manifest) {
+  const errors = validateExtensionManifest(manifest);
+  if (manifest?.background?.service_worker !== 'background/service-worker.js' || manifest.background?.type !== 'module') {
+    errors.push('Service worker Chromium invalide');
+  }
+  if (manifest?.background?.scripts) errors.push('Script de fond Firefox interdit dans le paquet Chromium');
+  return errors;
+}
+
+export function validateFirefoxManifest(manifest) {
+  const errors = validateExtensionManifest(manifest);
+  if (!Array.isArray(manifest?.background?.scripts) || !manifest.background.scripts.includes('background/service-worker.js') || manifest.background?.type !== 'module') {
+    errors.push('Script de fond Firefox invalide');
+  }
+  if (manifest?.background?.service_worker) errors.push('Service worker Chromium interdit dans le paquet Firefox');
+  return errors;
+}
+
 // Audit sécurité du 30/08 (MEDIUM #4) : une origine de dev (localhost,
 // boucle locale, IP privée) dans content_scripts.matches d'un manifest
 // EMBARQUÉ (build de prod) laisserait n'importe quelle page portant la même
@@ -144,15 +162,15 @@ export function findDevOriginContentScriptMatches(manifest) {
 function manifestsToValidate() {
   const extensionDir = extensionSourceDir();
   return [
-    ['extension/manifest.json', JSON.parse(readFileSync(join(extensionDir, 'manifest.json'), 'utf8'))],
-    [`extension/manifest.json + ${FIREFOX_OVERLAY_FILENAME}`, readFirefoxManifest(extensionDir)]
+    ['extension/manifest.json', JSON.parse(readFileSync(join(extensionDir, 'manifest.json'), 'utf8')), validateChromiumManifest],
+    [`extension/manifest.json + ${FIREFOX_OVERLAY_FILENAME}`, readFirefoxManifest(extensionDir), validateFirefoxManifest]
   ];
 }
 
 function run() {
   let hasErrors = false;
-  for (const [relativePath, manifest] of manifestsToValidate()) {
-    const errors = validateExtensionManifest(manifest);
+  for (const [relativePath, manifest, validate] of manifestsToValidate()) {
+    const errors = validate(manifest);
     if (errors.length > 0) {
       hasErrors = true;
       console.error(`${relativePath}:\n${errors.join('\n')}`);
@@ -189,6 +207,16 @@ function run() {
       console.error(
         `dist/extension-firefox/manifest.json:\nNuméro de port interdit dans content_scripts.matches : ${distPorted.join(', ')}`
       );
+    }
+  }
+
+  const chromiumManifestPath = fileURLToPath(new URL('../dist/extension-chromium/manifest.json', import.meta.url));
+  if (existsSync(chromiumManifestPath)) {
+    const chromiumManifest = JSON.parse(readFileSync(chromiumManifestPath, 'utf8'));
+    const errors = validateChromiumManifest(chromiumManifest);
+    if (errors.length > 0) {
+      hasErrors = true;
+      console.error(`dist/extension-chromium/manifest.json:\n${errors.join('\n')}`);
     }
   }
 

@@ -1,5 +1,6 @@
 import { type ComparisonUnit, type ProductBaseUnit } from '../../types/domain';
 import { normalizeToComparableFormat, roundMoney } from './unitNormalization';
+import { formatEuro } from '../../utils/formatMoney';
 
 // Base de comparaison "au kilo / au litre" pour un candidat.
 //
@@ -100,5 +101,5 @@ export function unitPriceGapIsSignificant(left: UnitPriceBasis, right: UnitPrice
 }
 
 export function formatUnitPriceLabel(basis: UnitPriceBasis): string {
-  return `${basis.unitPriceEuro.toFixed(2)} €/${basis.comparisonUnit === 'liter' ? 'L' : 'kg'}`;
+  return `${formatEuro(basis.unitPriceEuro)}/${basis.comparisonUnit === 'liter' ? 'L' : 'kg'}`;
 }

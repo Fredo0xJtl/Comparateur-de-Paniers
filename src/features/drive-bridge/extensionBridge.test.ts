@@ -93,7 +93,7 @@ describe('EXTENSION_UNAVAILABLE_MESSAGE', () => {
   });
 
   it('garde la sortie de secours pour qui héberge l’application lui-même', () => {
-    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/hébergez cette application vous-même/);
+    expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/héberges cette application toi-même/);
     expect(EXTENSION_UNAVAILABLE_MESSAGE).toMatch(/réglages du connecteur/);
   });
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Build destiné à GitHub Pages, où l'application est servie sous un
 // SOUS-CHEMIN (`https://<compte>.github.io/<dépôt>/`) et non à la racine d'un
-// domaine. Tout le reste — dev server, `vite preview`, Raspberry derrière
-// Caddy — sert l'application à la racine et continue d'utiliser
+// domaine. Le serveur de développement et `vite preview` servent
+// l'application à la racine et continuent d'utiliser
 // `npm run build` sans rien changer.
 //
 // Un script Node plutôt qu'une variable d'environnement écrite directement

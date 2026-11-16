@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { findDevOriginContentScriptMatches, validateExtensionManifest } from './validate-extension.mjs';
+import {
+  findDevOriginContentScriptMatches,
+  validateChromiumManifest,
+  validateExtensionManifest,
+  validateFirefoxManifest
+} from './validate-extension.mjs';
 
 const validManifest = {
   manifest_version: 3,
@@ -26,6 +31,26 @@ describe('validateExtensionManifest', () => {
   it('signale un hôte non autorisé', () => {
     const errors = validateExtensionManifest({ ...validManifest, host_permissions: ['https://evil.example/*'] });
     expect(errors).toContain('Hôte interdit : https://evil.example/*');
+  });
+});
+
+describe('validateExtensionManifest — contexte de fond par navigateur', () => {
+  it('exige un service worker dans le paquet Chromium', () => {
+    expect(
+      validateChromiumManifest({
+        ...validManifest,
+        background: { scripts: ['background/service-worker.js'], type: 'module' }
+      })
+    ).toContain('Service worker Chromium invalide');
+  });
+
+  it('exige un script de fond dans le paquet Firefox', () => {
+    expect(
+      validateFirefoxManifest({
+        ...validManifest,
+        background: { service_worker: 'background/service-worker.js', type: 'module' }
+      })
+    ).toContain('Script de fond Firefox invalide');
   });
 });
 

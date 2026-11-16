@@ -24,16 +24,38 @@
 
 const UNIT_SCALES = {
   g: { unit: 'g', scale: 1 },
+  gr: { unit: 'g', scale: 1 },
+  gramme: { unit: 'g', scale: 1 },
+  grammes: { unit: 'g', scale: 1 },
   kg: { unit: 'g', scale: 1000 },
+  kilo: { unit: 'g', scale: 1000 },
+  kilos: { unit: 'g', scale: 1000 },
   ml: { unit: 'ml', scale: 1 },
   l: { unit: 'ml', scale: 1000 },
+  litre: { unit: 'ml', scale: 1000 },
+  litres: { unit: 'ml', scale: 1000 },
   cl: { unit: 'ml', scale: 10 }
 };
+
+// Unités reconnues, formes longues d'abord : l'alternance d'une expression
+// régulière s'arrête à la première forme qui convient, et "1 litre" lu comme
+// "1 l" suivi de "itre" échouait sur la limite de mot.
+const UNITS = 'kilos?|kg|grammes?|gr|g|cl|ml|litres?|l';
+
+// Nombre, avec le séparateur de milliers français toléré seulement quand le
+// groupe final vaut "000" ("1 000 g", "2 000 ml") : sans cela "1 000 g" était
+// lu "000 g", soit 0 g. Volontairement pas "2 500 g", qui peut aussi vouloir
+// dire deux fois 500 g — l'ancienne lecture (500 g) y est conservée.
+const NUMBER = '\\d{1,3}[ \\u00a0\\u202f]000(?![\\d.,])|\\d+(?:[.,]\\d+)?';
+
+function toNumber(raw) {
+  return Number.parseFloat(raw.replace(/[   ]/g, '').replace(',', '.'));
+}
 
 // Volontairement limité aux unités de poids/volume comparables entre
 // magasins — un motif comme "4 personnes" ne dit rien du grammage réel et
 // est ignoré plutôt que de produire un faux repère.
-const QUANTITY_MULTIPLIER_PATTERN = /(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|cl|ml|l)\b/i;
+const QUANTITY_MULTIPLIER_PATTERN = new RegExp(`(\\d+)\\s*[x×]\\s*(${NUMBER})\\s*(${UNITS})\\b`, 'i');
 
 // Même multiplication, écrite en toutes lettres : "6 briques de 1L",
 // "4 pots de 125g". Sans ce motif, seul "1L" était lu et la quantité se
@@ -53,11 +75,33 @@ const QUANTITY_MULTIPLIER_PATTERN = /(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|c
 const PACK_CONTAINERS =
   'briques?|bouteilles?|pots?|bo[iî]tes?|sachets?|packs?|canettes?|barquettes?|tubes?|flacons?|berlingots?|paquets?|bidons?|conserves?';
 const QUANTITY_PACK_PATTERN = new RegExp(
-  `(\\d+)\\s*(?:${PACK_CONTAINERS})\\s*(?:de|d')\\s*(\\d+(?:[.,]\\d+)?)\\s*(kg|g|cl|ml|l)\\b`,
+  `(\\d+)\\s*(?:${PACK_CONTAINERS})\\s*(?:de|d')\\s*(${NUMBER})\\s*(${UNITS})\\b`,
   'i'
 );
 
-const QUANTITY_SIMPLE_PATTERN = /(\d+(?:[.,]\d+)?)\s*(kg|g|cl|ml|l)\b/i;
+// Lot écrit dans l'autre sens : "1,5L x 6", "33cl x24", "1,5 L pack de 6".
+// Sans ces motifs seul le format d'une unité était lu (1,5 L au lieu de 9 L),
+// et le prix au litre calculé se trouvait multiplié par la taille du lot.
+// Le nombre de droite doit clore l'expression ou être suivi d'un contenant :
+// dans "2L x 30 lavages", 30 n'est pas un nombre de bouteilles.
+const QUANTITY_REVERSED_MULTIPLIER_PATTERN = new RegExp(
+  `(${NUMBER})\\s*(${UNITS})\\s*[x×]\\s*(\\d+)(?![\\d.,])(?!\\s*(?!(?:${PACK_CONTAINERS})\\b)[a-zà-ÿ])`,
+  'i'
+);
+const QUANTITY_TRAILING_PACK_PATTERN = new RegExp(
+  `(${NUMBER})\\s*(${UNITS})\\b[\\s,;()-]*(?:packs?|lots?)\\s*de\\s*(\\d+)(?![\\d.,])`,
+  'i'
+);
+
+const QUANTITY_SIMPLE_PATTERN = new RegExp(`(${NUMBER})\\s*(${UNITS})\\b`, 'i');
+
+// Un format nul ("0 g") n'est jamais un format : le protocole le refuse
+// (drive-protocol.js) et il ferait échouer le produit entier. Mieux vaut
+// "pas de format lu", que le reste du module sait traiter.
+function toFormat(total, mapped) {
+  const quantity = total * mapped.scale;
+  return Number.isFinite(quantity) && quantity > 0 ? { quantity, unit: mapped.unit } : null;
+}
 
 // Retourne { quantity, unit } ('g'|'ml') ou null si aucun format n'a pu être
 // extrait du texte.
@@ -68,30 +112,36 @@ export function parseQuantityFromName(name) {
   const multiplierMatch = text.match(QUANTITY_MULTIPLIER_PATTERN);
   if (multiplierMatch) {
     const count = Number.parseInt(multiplierMatch[1], 10);
-    const unitQuantity = Number.parseFloat(multiplierMatch[2].replace(',', '.'));
     const mapped = UNIT_SCALES[multiplierMatch[3].toLowerCase()];
-    if (mapped && Number.isFinite(count) && Number.isFinite(unitQuantity)) {
-      return { quantity: count * unitQuantity * mapped.scale, unit: mapped.unit };
-    }
+    const format = mapped && toFormat(count * toNumber(multiplierMatch[2]), mapped);
+    if (format) return format;
   }
 
   const packMatch = text.match(QUANTITY_PACK_PATTERN);
   if (packMatch) {
     const count = Number.parseInt(packMatch[1], 10);
-    const unitQuantity = Number.parseFloat(packMatch[2].replace(',', '.'));
     const mapped = UNIT_SCALES[packMatch[3].toLowerCase()];
-    if (mapped && Number.isFinite(count) && count > 0 && Number.isFinite(unitQuantity)) {
-      return { quantity: count * unitQuantity * mapped.scale, unit: mapped.unit };
-    }
+    const format = mapped && toFormat(count * toNumber(packMatch[2]), mapped);
+    if (format) return format;
+  }
+
+  for (const pattern of [QUANTITY_REVERSED_MULTIPLIER_PATTERN, QUANTITY_TRAILING_PACK_PATTERN]) {
+    const reversedMatch = text.match(pattern);
+    if (!reversedMatch) continue;
+    const count = Number.parseInt(reversedMatch[3], 10);
+    // « Lessive 2L x 30 » veut dire 30 lavages, pas 30 bidons : au-delà de
+    // 24 (le plus gros lot courant), un nombre nu n'est pas une taille de lot.
+    if (pattern === QUANTITY_REVERSED_MULTIPLIER_PATTERN && count > 24) continue;
+    const mapped = UNIT_SCALES[reversedMatch[2].toLowerCase()];
+    const format = mapped && toFormat(count * toNumber(reversedMatch[1]), mapped);
+    if (format) return format;
   }
 
   const simpleMatch = text.match(QUANTITY_SIMPLE_PATTERN);
   if (simpleMatch) {
-    const quantity = Number.parseFloat(simpleMatch[1].replace(',', '.'));
     const mapped = UNIT_SCALES[simpleMatch[2].toLowerCase()];
-    if (mapped && Number.isFinite(quantity)) {
-      return { quantity: quantity * mapped.scale, unit: mapped.unit };
-    }
+    const format = mapped && toFormat(toNumber(simpleMatch[1]), mapped);
+    if (format) return format;
   }
 
   return null;

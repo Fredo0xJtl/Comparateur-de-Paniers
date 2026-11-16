@@ -188,7 +188,7 @@ describe('inspectLeclercUsualProductsPageOnPage', () => {
 
 describe('Injection isolation — lecteur de listes Leclerc', () => {
   function rebuildFromSource(fn) {
-    // eslint-disable-next-line no-new-func
+     
     return new Function(`return (${fn.toString()});`)();
   }
 

@@ -83,4 +83,3 @@ export async function rememberLeclercFarm(store, url) {
   }
 }
 
-export const LECLERC_FARM_STORAGE_KEY = FARM_STORAGE_KEY;

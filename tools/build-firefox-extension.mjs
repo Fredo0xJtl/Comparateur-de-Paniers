@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -129,7 +129,7 @@ function devOriginPatterns({ suffix, lanAddresses, explicitOnly = false }) {
           `http://127.0.0.1${suffix}/*`,
           `https://127.0.0.1${suffix}/*`,
           // Aucun nom d'hôte particulier n'est inscrit ici : une installation
-          // sur un NAS, un Raspberry Pi ou un serveur personnel se déclare
+          // locale ou sur un serveur personnel se déclare
           // depuis la page d'options du paquet de PRODUCTION (voir
           // extension/shared/custom-origins.js), ce qui rend inutile un build
           // spécial pour elle — et évite de faire figurer le nom d'une

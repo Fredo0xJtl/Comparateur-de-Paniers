@@ -1,3 +1,4 @@
+import { parseQuantityText } from '../scan/openFoodFactsClient';
 import {
   type CandidateMatchType,
   type PriceSnapshot,
@@ -23,6 +24,7 @@ import {
   type UnitPriceBasis
 } from './unitPriceArbitration';
 import { assessComparisonTrust, type ComparisonTrustReport } from './trustAssessment';
+import { formatEuro } from '../../utils/formatMoney';
 
 export type ComparisonInput = {
   rows: ShoppingListRow[];
@@ -63,6 +65,22 @@ export type ComparisonDecision = {
   priceComparisonByStore: Partial<Record<StoreKey, StorePriceComparison>>;
 };
 
+// Ligne dont le paquet retenu n'a pas le format demandé dans la liste, ou
+// dont les deux magasins proposent des formats différents (16/11). Le total
+// compte toujours le prix du paquet réellement acheté : ce résumé sert à le
+// dire avant tout achat, au lieu de le laisser deviner dans le détail.
+export type FormatNotice = {
+  itemId: string;
+  productId: string;
+  // Format demandé dans la liste (« 1 L »), quand il est connu.
+  requested?: string;
+  selectedStoreKey?: StoreKey;
+  // Format de la meilleure fiche de chaque magasin, quand il est connu.
+  byStore: Partial<Record<StoreKey, string>>;
+  selectedDiffersFromList: boolean;
+  storesDiffer: boolean;
+};
+
 export type StorePriceComparison = {
   productName: string;
   // Prix du paquet tel que vendu (pas le total pour la quantité demandée).
@@ -80,7 +98,8 @@ export type ComparisonSignalCode =
   | 'PRICE_MISMATCH'
   | 'FORMAT_CONFIRMATION_REQUIRED'
   | 'CONFIRMED_ABSENT_BOTH'
-  | 'PROMOTION_NOT_OPTIMIZED';
+  | 'PROMOTION_NOT_OPTIMIZED'
+  | 'FORMAT_DIFFERS_FROM_LIST';
 
 export type ComparisonSignal = { code: ComparisonSignalCode; severity: 'blocking' | 'warning' };
 
@@ -111,6 +130,7 @@ export type ComparisonResult = {
   savingsVsBestSingleStore: number | null;
   trustReport: ComparisonTrustReport;
   excludedLines: Array<{ itemId: string; productId: string; reason: 'absent_both' }>;
+  formatNotices: FormatNotice[];
   recommendation:
     | { kind: 'split'; reason: string }
     | { kind: 'single_store'; storeKey: StoreKey; reason: string }
@@ -201,13 +221,14 @@ export function compareShoppingList(input: ComparisonInput): ComparisonResult {
   const effectiveInput: ComparisonInput =
     dedupedCandidates === input.candidates ? input : { ...input, candidates: dedupedCandidates };
   const rawDecisions = selectAllDecisions(effectiveInput.rows, effectiveInput);
-  const decisions =
+  const dedupedDecisions =
     duplicateWarnings.size === 0
       ? rawDecisions
       : rawDecisions.map((decision) => {
           const extra = duplicateWarnings.get(decision.itemId);
           return extra ? { ...decision, warnings: [...decision.warnings, ...extra] } : decision;
         });
+  const { decisions, formatNotices } = applyRequestedFormatCheck(dedupedDecisions, effectiveInput);
   const excludedLines = decisions
     .filter((decision) => decision.signals.some((signal) => signal.code === 'CONFIRMED_ABSENT_BOTH'))
     .map((decision) => ({ itemId: decision.itemId, productId: decision.productId, reason: 'absent_both' as const }));
@@ -227,7 +248,9 @@ export function compareShoppingList(input: ComparisonInput): ComparisonResult {
     optimized !== null && bestSingle.total !== null ? roundMoney(bestSingle.total - optimized) : null;
   const trustReport = assessComparisonTrust({ decisions, coverage });
   const recommendation = trustReport.status === 'blocked'
-    ? { kind: 'needs_validation' as const, reason: `${trustReport.blockingIssueCount} anomalie(s) critique(s) empêchent une recommandation fiable.` }
+    ? { kind: 'needs_validation' as const, reason: trustReport.blockingIssueCount > 1
+          ? `${trustReport.blockingIssueCount} problèmes empêchent une recommandation fiable.`
+          : 'Un problème empêche une recommandation fiable.' }
     : buildRecommendation({
         bestSingleStore: bestSingle.storeKey,
         hasValidation: productsToValidate.length > 0,
@@ -247,8 +270,75 @@ export function compareShoppingList(input: ComparisonInput): ComparisonResult {
     savingsVsBestSingleStore,
     trustReport,
     excludedLines,
+    formatNotices,
     recommendation
   };
+}
+
+// Compare le paquet retenu au format demandé dans la liste (format du produit
+// lu sur Open Food Facts ou sur la fiche validée). Cas réel du 16/11 : 1 L
+// demandé, 2 × 1,5 L retenu, compté 6,20 € sans que rien ne le signale hors
+// du détail de la ligne. Ne change ni le choix ni le prix : un paquet de 3 L
+// coûte bien 6,20 € à la caisse. Ajoute un avertissement (non bloquant : le
+// format peut être voulu, l'utilisateur l'a parfois choisi lui-même) et
+// alimente le résumé « formats différents » affiché avant le conseil.
+function applyRequestedFormatCheck(
+  decisions: ComparisonDecision[],
+  input: ComparisonInput
+): { decisions: ComparisonDecision[]; formatNotices: FormatNotice[] } {
+  const rowByItemId = new Map(input.rows.map((row) => [row.item.id, row]));
+  const candidateById = new Map(input.candidates.map((candidate) => [candidate.id, candidate]));
+  const formatOf = (candidateId: string | undefined) => {
+    const candidate = candidateId ? candidateById.get(candidateId) : undefined;
+    if (!candidate) return null;
+    const known = normalizeToComparableFormat(candidate.quantity, candidate.unit);
+    if (known) return known;
+    // Fiche sans format (souvent choisie à la main) : format lu dans son nom,
+    // UNIQUEMENT pour cet avertissement. Jamais enregistré ni utilisé pour le
+    // contrôle de prix ou le prix au litre : une lecture fausse (« Lot de 6
+    // yaourts 125 g ») y créerait un faux blocage (relecture du 16/11).
+    const parsed = parseQuantityText(candidate.name);
+    return parsed ? normalizeToComparableFormat(parsed.baseQuantity, parsed.baseUnit) : null;
+  };
+  const formatNotices: FormatNotice[] = [];
+
+  const checked = decisions.map((decision) => {
+    const row = rowByItemId.get(decision.itemId);
+    if (!row) return decision;
+    const requested = normalizeToComparableFormat(row.product.baseQuantity, row.product.baseUnit);
+    const selected = formatOf(decision.selectedCandidateId);
+    const leclerc = formatOf(decision.storeCandidateIds.leclerc);
+    const hyperu = formatOf(decision.storeCandidateIds.hyperu);
+    const selectedDiffersFromList = formatsDiffer(requested, selected);
+    const storesDiffer = formatsDiffer(leclerc, hyperu);
+    if (!selectedDiffersFromList && !storesDiffer) return decision;
+
+    formatNotices.push({
+      itemId: decision.itemId,
+      productId: decision.productId,
+      ...(requested ? { requested: formatLabel(requested) } : {}),
+      ...(decision.selectedStoreKey ? { selectedStoreKey: decision.selectedStoreKey } : {}),
+      byStore: {
+        ...(leclerc ? { leclerc: formatLabel(leclerc) } : {}),
+        ...(hyperu ? { hyperu: formatLabel(hyperu) } : {})
+      },
+      selectedDiffersFromList,
+      storesDiffer
+    });
+    if (!selectedDiffersFromList || !selected || !requested || !decision.selectedStoreKey) return decision;
+    const warning =
+      `Format différent de ta liste : tu as demandé ${formatLabel(requested)}, le paquet retenu chez ` +
+      `${storeLabel(decision.selectedStoreKey)} fait ${formatLabel(selected)}. Le prix compté est celui de ce paquet.`;
+    return {
+      ...decision,
+      // « Format différent » (libellé court posé par l'option) dit la même
+      // chose en moins précis : on garde seulement le message détaillé.
+      warnings: [...new Set([...decision.warnings.filter((entry) => entry !== 'Format différent'), warning])],
+      signals: uniqueSignals([...decision.signals, { code: 'FORMAT_DIFFERS_FROM_LIST', severity: 'warning' }])
+    };
+  });
+
+  return { decisions: checked, formatNotices };
 }
 
 // Résout les décisions ligne par ligne en 2 passes. Passe 1 : toutes les
@@ -824,12 +914,19 @@ function buildBetterFormatWarning(options: CandidateOption[], selected: Candidat
 
   return (
     `Meilleure offre disponible dans un autre conditionnement (non demandé) chez ${storeLabel(alternate.candidate.storeKey)} : ` +
-    `« ${alternate.candidate.name} » (${formatText}) à ${alternate.lineTotal!.toFixed(2)} €, soit ${formatUnitPriceLabel(alternateBasis)} ` +
+    `« ${alternate.candidate.name} » (${formatText}) à ${formatEuro(alternate.lineTotal!)}, soit ${formatUnitPriceLabel(alternateBasis)} ` +
     `contre ${formatUnitPriceLabel(selectedBasis)} pour le format retenu. À valider avant d'ajuster ta commande.`
   );
 }
 
-function formatLabel(format: NormalizedFormat): string {
+// « 3 L » plutôt que « 3000 ml » : c'est ainsi que les magasins écrivent un
+// volume d'un litre ou plus. Les poids restent en grammes (« 1040 g »), forme
+// courante sur les fiches et déjà lue ainsi par l'utilisateur.
+export function formatLabel(format: NormalizedFormat): string {
+  if (format.unit === 'ml' && format.quantity >= 1000) {
+    const liters = Math.round(format.quantity / 10) / 100;
+    return `${String(liters).replace('.', ',')} L`;
+  }
   return `${Math.round(format.quantity)} ${format.unit}`;
 }
 
@@ -1117,23 +1214,26 @@ function buildRecommendation(input: {
     };
   }
 
-  if (input.savingsVsBestSingleStore >= input.savingThresholdEuro) {
+  // Un gain nul ou négatif ne justifie jamais deux commandes, même avec un
+  // seuil réglé à 0 € : sans le second test, « 0,00 € d'économie » suffisait
+  // à recommander de séparer le panier.
+  if (input.savingsVsBestSingleStore > 0 && input.savingsVsBestSingleStore >= input.savingThresholdEuro) {
     return {
       kind: 'split',
-      reason: `Séparer le panier atteint le seuil d’économie de ${input.savingThresholdEuro.toFixed(2)} €.`
+      reason: `Séparer le panier atteint le seuil d’économie de ${formatEuro(input.savingThresholdEuro)}.`
     };
   }
 
   return {
     kind: 'single_store',
     storeKey: input.bestSingleStore,
-    reason: `L’économie optimisée reste sous le seuil de ${input.savingThresholdEuro.toFixed(2)} €.`
+    reason: `L’économie optimisée reste sous le seuil de ${formatEuro(input.savingThresholdEuro)}.`
   };
 }
 
 function buildDecisionReason(option: CandidateOption) {
   const unitReason =
-    option.snapshot?.unitPrice !== undefined ? `, ${option.snapshot.unitPrice.toFixed(2)} € par unité de comparaison` : '';
+    option.snapshot?.unitPrice !== undefined ? `, ${formatEuro(option.snapshot.unitPrice)} par unité de comparaison` : '';
 
   return `Choisi chez ${storeLabel(option.candidate.storeKey)} : ${option.candidate.confidenceReasons.join(', ')}, confiance ${option.confidenceScore} %${unitReason}.`;
 }

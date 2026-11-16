@@ -179,6 +179,19 @@ describe('parsing du champ quantity : lots écrits en toutes lettres', () => {
     expect(result?.baseUnit).toBe('ml');
   });
 
+  it.each([
+    ['1,5L x 6', 9000, 'ml'],
+    ['33cl x24', 7920, 'ml'],
+    ['1.5 l pack de 6', 9000, 'ml'],
+    ['2L x 30 lavages', 2000, 'ml'],
+    ['2L x 30', 2000, 'ml']
+  ])('lit le lot écrit format puis nombre : %s', async (quantity, expected, unit) => {
+    mockFetchOnce({ status: 1, product: { product_name: 'Produit', quantity } });
+    const result = await lookupOpenFoodFactsProduct('3256224234494');
+    expect(result?.baseQuantity).toBe(expected);
+    expect(result?.baseUnit).toBe(unit);
+  });
+
   it('ne multiplie pas sans "de" : le poids annoncé est celui du lot', async () => {
     mockFetchOnce({
       status: 1,
@@ -187,6 +200,17 @@ describe('parsing du champ quantity : lots écrits en toutes lettres', () => {
     const result = await lookupOpenFoodFactsProduct('3256224234494');
     expect(result?.baseQuantity).toBe(200);
     expect(result?.baseUnit).toBe('g');
+  });
+
+  it('lit "1 000 g" comme 1000 g et jamais comme un format nul', async () => {
+    mockFetchOnce({ status: 1, product: { product_name: 'Riz', quantity: '1 000 g' } });
+    const result = await lookupOpenFoodFactsProduct('3256224234494');
+    expect(result?.baseQuantity).toBe(1000);
+    expect(result?.baseUnit).toBe('g');
+
+    mockFetchOnce({ status: 1, product: { product_name: 'Riz', quantity: '0 g' } });
+    const empty = await lookupOpenFoodFactsProduct('3256224234494');
+    expect(empty?.baseQuantity).toBeUndefined();
   });
 
   it('laisse inchangé le format multiplicateur déjà normalisé', async () => {

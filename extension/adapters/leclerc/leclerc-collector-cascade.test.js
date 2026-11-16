@@ -389,6 +389,83 @@ describe('collectLeclercStore — quasi-matchs (nearMisses) cumulés sur toute l
   }, 20_000);
 });
 
+// Mesuré sur téléphone le 16/11 : Firefox hors écran, la grille de résultats
+// ne se remplit pas ; la recherche brûlait ≈ 58 s puis concluait
+// PRODUCT_NOT_FOUND, que l'application mémorise 3 jours.
+describe('collectLeclercStore — page cachée (Firefox hors écran)', () => {
+  const product = { productId: 'product-soja', name: 'Boisson soja nature 1L', brand: '' };
+  const baseHandlers = {
+    dismissCookieConsentOnPage: () => ({ dismissed: false }),
+    readPublicLeclercPageState: () => ({
+      hostname: 'fd4-courses.leclercdrive.fr',
+      pathname: '/magasin-1/recherche.aspx',
+      hasCaptcha: false,
+      hasStorePrompt: false,
+      hasCatalog: true
+    }),
+    inspectLeclercSearchNavigationOnPage: () => ({ ready: true }),
+    triggerLeclercLazyLoadOnPage: () => undefined,
+    readProductCandidatesOnPage: () => [],
+    inspectLeclercResultsOnPage: () => ({ hasCaptcha: false, resultCount: 0 }),
+    isLeclercNoResultsConfirmedOnPage: () => true
+  };
+  const collect = (handlers) =>
+    collectLeclercStore({
+      scripting: { executeScript: makeDispatcher(handlers) },
+      tabId: 22,
+      signal: new AbortController().signal,
+      job: { jobId: 'job-11112222aaaabbbb' },
+      store: { storeKey: 'leclerc', localStoreId: 'store-1' },
+      products: [product]
+    });
+
+  it('rend STORE_TAB_HIDDEN sans lire de résultats quand la recherche est refusée page cachée', async () => {
+    const reader = vi.fn(() => []);
+    const result = await collect({
+      ...baseHandlers,
+      readProductCandidatesOnPage: reader,
+      startProductSearchOnPage: () => ({ started: false, code: 'STORE_TAB_HIDDEN' })
+    });
+    expect(reader).not.toHaveBeenCalled();
+    expect(result.observations).toEqual([]);
+    expect(result.errors).toEqual([{ storeKey: 'leclerc', productId: 'product-soja', code: 'STORE_TAB_HIDDEN' }]);
+  }, 20_000);
+
+  it('rend STORE_TAB_HIDDEN si la page devient cachée pendant la recherche', async () => {
+    const result = await collect({
+      ...baseHandlers,
+      inspectLeclercResultsOnPage: () => ({ hasCaptcha: false, resultCount: 0, pageHidden: true }),
+      startProductSearchOnPage: (searched) => ({ started: true, query: searched.name })
+    });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].code).toBe('STORE_TAB_HIDDEN');
+  }, 20_000);
+
+  // Relecture du 16/11 : la page se cache après le 1er étage, les étages
+  // suivants refusent de chercher, puis la page revient à l'écran avant
+  // l'inspection finale (pageHidden: false). Ce n'est pas une preuve d'absence.
+  it("rend STORE_TAB_HIDDEN si un étage suivant a refusé de chercher, même page revenue à l'écran", async () => {
+    let calls = 0;
+    const result = await collect({
+      ...baseHandlers,
+      startProductSearchOnPage: (searched) => {
+        calls += 1;
+        return calls === 1 ? { started: true, query: searched.name } : { started: false, code: 'STORE_TAB_HIDDEN' };
+      }
+    });
+    expect(calls).toBeGreaterThan(1);
+    expect(result.errors[0].code).toBe('STORE_TAB_HIDDEN');
+  }, 20_000);
+
+  it('garde PRODUCT_NOT_FOUND quand la page est restée visible', async () => {
+    const result = await collect({
+      ...baseHandlers,
+      startProductSearchOnPage: (searched) => ({ started: true, query: searched.name })
+    });
+    expect(result.errors[0].code).toBe('PRODUCT_NOT_FOUND');
+  }, 20_000);
+});
+
 describe('collectLeclercStore — marque distributeur concurrente exclue de la requête (name/simplified_name)', () => {
   // Bug réel (diagnostic 2026-08-27) : "Lait des campagnes" (marque
   // distributeur Carrefour) était recherché chez Leclerc comme "Lait des
@@ -910,6 +987,7 @@ describe('addToCartLeclercStore — vérification de connexion (contrôle unique
           hasCatalog: true
         }),
         readLeclercSessionStateOnPage: () => ({ signedIn: false, evidence: 'Se connecter' }),
+        openStoreLoginOnPage: () => ({ opened: true, evidence: 'clic_bouton_connexion' }),
         startProductSearchOnPage: searchStarted
       })
     };
@@ -926,7 +1004,7 @@ describe('addToCartLeclercStore — vérification de connexion (contrôle unique
     expect(searchStarted).not.toHaveBeenCalled();
     expect(result.observations).toEqual([]);
     expect(result.errors).toEqual([
-      { storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED', details: { evidence: 'Se connecter' } }
+      { storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED', details: { evidence: 'Se connecter', loginOpened: true } }
     ]);
     expect(result.keepTabOpen).toBe(true);
   });
@@ -962,7 +1040,7 @@ describe('addToCartLeclercStore — vérification de connexion (contrôle unique
     });
 
     expect(result.observations).toEqual([]);
-    expect(result.errors).toEqual([{ storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED', details: { evidence: null } }]);
+    expect(result.errors).toEqual([{ storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED', details: { evidence: null, loginOpened: false } }]);
     expect(result.keepTabOpen).toBe(true);
   });
 
@@ -1647,6 +1725,28 @@ describe('collectLeclercStore — raccourci "permalien appris"', () => {
     expect(result.observations[0].priceEuro).toBe(2.4);
     // Le gain de temps demandé : aucune recherche déclenchée du tout.
     expect(startProductSearchOnPage).not.toHaveBeenCalled();
+  });
+
+  it("ne lit jamais la page encore affichée tant que la navigation vers la fiche n'a pas abouti", async () => {
+    // Bug réel du 15/11 : la lecture partait avant l'arrivée de la fiche et
+    // attribuait au produit le nom et le prix de la page précédente. Tant que
+    // la page signale NAVIGATION_PENDING, rien ne doit être retenu.
+    let reads = 0;
+    const result = await run(
+      baseHandlers({
+        readLeclercProductPageOnPage: () => {
+          reads += 1;
+          return reads <= 2
+            ? { ok: false, code: 'NAVIGATION_PENDING' }
+            : { ok: true, name: 'Riz basmati Lustucru 1kg', priceEuro: 2.4 };
+        }
+      })
+    );
+
+    expect(reads).toBe(3);
+    expect(result.errors).toEqual([]);
+    expect(result.observations).toHaveLength(1);
+    expect(result.observations[0].priceEuro).toBe(2.4);
   });
 
   it("ne s'octroie jamais la confiance d'un choix humain", async () => {

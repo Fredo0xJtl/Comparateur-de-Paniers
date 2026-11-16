@@ -29,9 +29,6 @@
 
 const VALID_LENGTHS = new Set([8, 12, 13, 14]);
 
-/** Longueurs GTIN normalisées acceptées (EAN-8, UPC-A, EAN-13, GTIN-14). */
-export const EAN_VALID_LENGTHS = VALID_LENGTHS;
-
 /**
  * Renvoie le code-barres normalisé (chiffres uniquement) s'il s'agit d'un
  * GTIN valide — longueur normalisée ET clé de contrôle correcte —, sinon

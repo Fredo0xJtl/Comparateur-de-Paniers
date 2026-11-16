@@ -121,7 +121,8 @@ describe('collectCoursesUStore — correction manuelle par URL (Hyper U)', () =>
           barcode: '3564700000014',
           available: true,
           externalProductId: 'p-1234567',
-          externalStoreId: 'store-99'
+          externalStoreId: 'store-99',
+          productUrl: manualUrl
         })
       })
     };
@@ -150,6 +151,171 @@ describe('collectCoursesUStore — correction manuelle par URL (Hyper U)', () =>
     expect(observation.productUrl).toBe(manualUrl);
 
     expect(tabs.update).toHaveBeenCalledWith(42, { url: manualUrl });
+  });
+
+  // 16/11 : juste après tabs.update, l'onglet peut encore afficher (et
+  // annoncer 'complete' pour) la page du produit précédent. Le document quitté
+  // est marqué, et sa lecture rend NAVIGATION_PENDING : on ne doit retenir que
+  // la première lecture de la NOUVELLE page, sans attente fixe ni fermeture
+  // de bandeau cookies entre les deux.
+  it('ne lit jamais la page quittée : attend la nouvelle fiche avant de retenir un prix', async () => {
+    const manualUrl = 'https://www.coursesu.com/p/lait-demi-ecreme-uht-lait-dici/1234567.html';
+    const tabs = baseTabs();
+    const called = [];
+    let reads = 0;
+    const scripting = {
+      executeScript: vi.fn(async ({ func, args }) => {
+        called.push(func.name);
+        const handlers = {
+          inspectCoursesUPage: () => ({ catalogReady: true, blocked: false, details: {} }),
+          dismissCookieConsentOnPage: () => ({ dismissed: false }),
+          markCoursesULeavingPageOnPage: () => ({ marked: true }),
+          readCoursesUProductPageOnPage: (options) => {
+            // Lecture sans affichage indisponible ici : c'est le repli par
+            // navigation qui est testé.
+            if (options?.fetchUrl) return { ok: false, code: 'FETCH_FAILED' };
+            expect(options).toEqual({ rejectLoadingDocument: true });
+            reads += 1;
+            if (reads <= 2) return { ok: false, code: 'NAVIGATION_PENDING' };
+            return { ok: true, name: 'Lait demi écrémé UHT, 6x1l', priceEuro: 5.94, priceSource: 'item_price_attr', available: true, productUrl: manualUrl };
+          }
+        };
+        return [{ result: await handlers[func.name](...(args ?? [])) }];
+      })
+    };
+
+    const result = await collectCoursesUStore({
+      scripting,
+      tabs,
+      tabId: 42,
+      signal: new AbortController().signal,
+      job: { jobId: 'job-1234567890abcdef', manualUrlOverrides: { hyperu: { 'product-lait': manualUrl } } },
+      store: { storeKey: 'hyperu', localStoreId: 'store-1' },
+      products: [{ productId: 'product-lait', name: 'Lait demi écrémé', brand: '' }]
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.observations[0].priceEuro).toBe(5.94);
+    expect(reads).toBe(3);
+    // Le marquage précède la navigation, et plus aucun bandeau cookies n'est
+    // traité entre la navigation et la lecture (un seul appel : le prologue).
+    // (Le tout premier appel au lecteur est la tentative sans affichage.)
+    const firstPageRead = called.indexOf('readCoursesUProductPageOnPage', called.indexOf('readCoursesUProductPageOnPage') + 1);
+    expect(called.indexOf('markCoursesULeavingPageOnPage')).toBeLessThan(firstPageRead);
+    expect(tabs.update).toHaveBeenCalledWith(42, { url: manualUrl });
+    expect(called.filter((name) => name === 'dismissCookieConsentOnPage')).toHaveLength(1);
+  });
+
+  it('attend que la page soit posée avant de retenir un prix lu hors du bloc prix officiel', async () => {
+    const manualUrl = 'https://www.coursesu.com/p/lait-demi-ecreme-uht-lait-dici/1234567.html';
+    let reads = 0;
+    const scripting = {
+      executeScript: makeDispatcher({
+        inspectCoursesUPage: () => ({ catalogReady: true, blocked: false, details: {} }),
+        dismissCookieConsentOnPage: () => ({ dismissed: false }),
+        markCoursesULeavingPageOnPage: () => ({ marked: true }),
+        readCoursesUProductPageOnPage: (options) => {
+          if (options?.fetchUrl) return { ok: false, code: 'FETCH_FAILED' };
+          reads += 1;
+          // Première lecture : bloc prix pas encore là, montant pris dans le
+          // texte. Ensuite : le vrai prix du bloc officiel.
+          return reads === 1
+            ? { ok: true, name: 'Lait', priceEuro: 0.99, priceSource: 'texte_affiche', available: true, productUrl: manualUrl }
+            : { ok: true, name: 'Lait', priceEuro: 5.94, priceSource: 'item_price_attr', available: true, productUrl: manualUrl };
+        }
+      })
+    };
+
+    const result = await collectCoursesUStore({
+      scripting,
+      tabs: baseTabs(),
+      tabId: 42,
+      signal: new AbortController().signal,
+      job: { jobId: 'job-1234567890abcdef', manualUrlOverrides: { hyperu: { 'product-lait': manualUrl } } },
+      store: { storeKey: 'hyperu', localStoreId: 'store-1' },
+      products: [{ productId: 'product-lait', name: 'Lait demi écrémé', brand: '' }]
+    });
+
+    expect(result.observations[0].priceEuro).toBe(5.94);
+  });
+
+  // 16/11 : lecture sans affichage. Mesurée sur téléphone à ≈ 0,26 s par
+  // fiche contre ≈ 0,9 s par navigation, pour 16 prix identiques sur 16.
+  describe('lecture de la fiche sans affichage', () => {
+    const manualUrl = 'https://www.coursesu.com/p/lait-demi-ecreme-uht-lait-dici/1234567.html';
+    const fetchedPage = (overrides = {}) => ({
+      ok: true,
+      fetched: true,
+      name: 'Lait demi écrémé UHT, 6x1l',
+      priceEuro: 5.94,
+      priceSource: 'item_price_attr',
+      available: true,
+      productUrl: manualUrl,
+      ...overrides
+    });
+    const defaultNavigatedPage = { ok: true, name: 'Lait demi écrémé UHT, 6x1l', priceEuro: 6.1, priceSource: 'item_price_attr', available: true, productUrl: manualUrl };
+
+    async function collectWith(fetchResult, navigatedPage = defaultNavigatedPage) {
+      const tabs = baseTabs();
+      const scripting = {
+        executeScript: makeDispatcher({
+          inspectCoursesUPage: () => ({ catalogReady: true, blocked: false, details: {} }),
+          dismissCookieConsentOnPage: () => ({ dismissed: false }),
+          markCoursesULeavingPageOnPage: () => ({ marked: true }),
+          readCoursesUProductPageOnPage: (options) => (options?.fetchUrl ? fetchResult : navigatedPage)
+        })
+      };
+      const result = await collectCoursesUStore({
+        scripting,
+        tabs,
+        tabId: 42,
+        signal: new AbortController().signal,
+        job: { jobId: 'job-1234567890abcdef', manualUrlOverrides: { hyperu: { 'product-lait': manualUrl } } },
+        store: { storeKey: 'hyperu', localStoreId: 'store-1' },
+        products: [{ productId: 'product-lait', name: 'Lait demi écrémé', brand: '' }]
+      });
+      return { result, tabs };
+    }
+
+    it('retient le prix lu sans affichage et ne déplace pas l’onglet', async () => {
+      const { result, tabs } = await collectWith(fetchedPage());
+      expect(result.errors).toEqual([]);
+      expect(result.observations[0]).toMatchObject({ priceEuro: 5.94, matchStage: 'manual', productUrl: manualUrl });
+      expect(tabs.update).not.toHaveBeenCalled();
+    });
+
+    it('accepte une redirection vers la même fiche (nom d’adresse réécrit, même identifiant)', async () => {
+      const { result, tabs } = await collectWith(
+        fetchedPage({ productUrl: 'https://www.coursesu.com/p/lait-demi-ecreme-nouveau-nom/1234567.html' })
+      );
+      expect(result.observations[0].priceEuro).toBe(5.94);
+      expect(tabs.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['une redirection vers une autre page', fetchedPage({ productUrl: 'https://www.coursesu.com/recherche?q=lait' })],
+      ['une autre fiche que celle demandée', fetchedPage({ productUrl: 'https://www.coursesu.com/p/autre/7654321.html' })],
+      ['un prix lu hors du bloc prix officiel', fetchedPage({ priceSource: 'texte_affiche', priceEuro: 0.99 })],
+      ['une réponse en erreur', { ok: false, code: 'FETCH_HTTP_ERROR', status: 403 }],
+      ['une fiche annoncée introuvable', { ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND', fetched: true }]
+    ])('retombe sur la navigation classique pour %s', async (_label, fetchResult) => {
+      const { result, tabs } = await collectWith(fetchResult);
+      expect(tabs.update).toHaveBeenCalledWith(42, { url: manualUrl });
+      expect(result.observations[0].priceEuro).toBe(6.1);
+    });
+
+    // Relecture du 16/11 : un permalien périmé redirigé vers une page de
+    // résultats ne doit pas faire retenir le premier produit qui s'y trouve.
+    it('refuse la page affichée par navigation si ce n’est pas la fiche demandée', async () => {
+      const { result } = await collectWith(
+        { ok: false, code: 'FETCH_FAILED' },
+        { ...defaultNavigatedPage, productUrl: 'https://www.coursesu.com/recherche?q=lait' }
+      );
+      expect(result.observations).toEqual([]);
+      expect(result.errors).toEqual([
+        expect.objectContaining({ productId: 'product-lait', code: 'MANUAL_URL_PAGE_NOT_FOUND' })
+      ]);
+    });
   });
 
   it('remonte une erreur exploitable quand la fiche manuelle est introuvable/vide', async () => {
@@ -498,6 +664,7 @@ describe('addToCartCoursesUStore — vérification de connexion (contrôle uniqu
         inspectCoursesUPage: () => ({ catalogReady: true, blocked: false, details: {} }),
         dismissCookieConsentOnPage: () => ({ dismissed: false }),
         readCoursesUSessionStateOnPage: () => ({ signedIn: false, evidence: 'Se connecter' }),
+        openStoreLoginOnPage: () => ({ opened: true, evidence: 'clic_bouton_connexion' }),
         startCoursesUSearch: searchStarted
       })
     };
@@ -514,7 +681,7 @@ describe('addToCartCoursesUStore — vérification de connexion (contrôle uniqu
     expect(searchStarted).not.toHaveBeenCalled();
     expect(result.observations).toEqual([]);
     expect(result.errors).toEqual([
-      { storeKey: 'hyperu', code: 'CART_LOGIN_REQUIRED', details: { evidence: 'Se connecter' } }
+      { storeKey: 'hyperu', code: 'CART_LOGIN_REQUIRED', details: { evidence: 'Se connecter', loginOpened: true } }
     ]);
     expect(result.keepTabOpen).toBe(true);
   });
@@ -544,7 +711,7 @@ describe('addToCartCoursesUStore — vérification de connexion (contrôle uniqu
     });
 
     expect(result.observations).toEqual([]);
-    expect(result.errors).toEqual([{ storeKey: 'hyperu', code: 'CART_LOGIN_REQUIRED', details: { evidence: null } }]);
+    expect(result.errors).toEqual([{ storeKey: 'hyperu', code: 'CART_LOGIN_REQUIRED', details: { evidence: null, loginOpened: false } }]);
     expect(result.keepTabOpen).toBe(true);
   });
 
@@ -987,7 +1154,8 @@ describe('collectCoursesUStore — raccourci "permalien appris"', () => {
         ok: true,
         name: 'Lait demi écrémé UHT LAIT D\'ICI, 6x1l',
         priceEuro: 5.64,
-        available: true
+        available: true,
+        productUrl: KNOWN_URL
       })
     });
 

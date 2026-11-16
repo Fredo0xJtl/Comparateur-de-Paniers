@@ -19,7 +19,7 @@ describe('demoProducts', () => {
     ]);
   });
 
-  it('backfills mock store data when an older local database only has products', async () => {
+  it('ne dépose aucune donnée d’exemple dans une base qui n’a que des produits', async () => {
     await db.products.bulkPut(demoProducts);
 
     await ensureDemoData();
@@ -28,8 +28,10 @@ describe('demoProducts', () => {
     // userStores must NOT be seeded — these are user data, not demo data.
     // Users add their own stores; seeding would revert saved URLs on restart.
     expect(await db.userStores.count()).toBe(0);
-    expect(await db.productCandidates.count()).toBeGreaterThanOrEqual(5);
-    expect(await db.priceSnapshots.count()).toBeGreaterThanOrEqual(5);
+    // Ni fiches magasin ni prix fictifs : un vrai utilisateur ne doit voir
+    // que des prix réellement lus sur les sites.
+    expect(await db.productCandidates.count()).toBe(0);
+    expect(await db.priceSnapshots.count()).toBe(0);
     expect(await db.settings.get('default')).toBeDefined();
   });
 });

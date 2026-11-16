@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { parseQuantityFromName, normalizeQuantity, quantitiesMatch } from './quantity-parser.js';
 
 describe('parseQuantityFromName', () => {
+  it('lit le séparateur de milliers français au lieu de 0', () => {
+    expect(parseQuantityFromName('Riz 1 000 g')).toEqual({ quantity: 1000, unit: 'g' });
+    expect(parseQuantityFromName('Eau 2 000 ml')).toEqual({ quantity: 2000, unit: 'ml' });
+  });
+
+  it('ne prend pas "2 500 g" pour 2500 g (peut vouloir dire 2 fois 500 g)', () => {
+    expect(parseQuantityFromName('Lot 2 500 g')).toEqual({ quantity: 500, unit: 'g' });
+  });
+
+  it('reconnaît les unités écrites en toutes lettres', () => {
+    expect(parseQuantityFromName('Lait 1 litre')).toEqual({ quantity: 1000, unit: 'ml' });
+    expect(parseQuantityFromName('Farine 500 gr')).toEqual({ quantity: 500, unit: 'g' });
+    expect(parseQuantityFromName('Sucre 2 kilos')).toEqual({ quantity: 2000, unit: 'g' });
+  });
+
+  it('ne renvoie jamais un format nul', () => {
+    expect(parseQuantityFromName('Produit 0 g')).toBeNull();
+    expect(parseQuantityFromName('Pack 6x0l')).toBeNull();
+    expect(parseQuantityFromName('Truc 0,0 kg')).toBeNull();
+  });
+
   it('extrait un poids simple en grammes', () => {
     expect(parseQuantityFromName('Purée Mousline nature 1040g')).toEqual({ quantity: 1040, unit: 'g' });
   });
@@ -128,5 +149,29 @@ describe('Lots écrits en toutes lettres ("6 briques de 1L")', () => {
       quantity: 1040,
       unit: 'g'
     });
+  });
+});
+
+describe('Lots écrits format puis nombre ("1,5L x 6")', () => {
+  // Audit du 15/11 : seul le format d'une unité était lu, et le prix au litre
+  // calculé se trouvait multiplié par la taille du lot (6 à 24 fois trop haut).
+  it('multiplie le format par le nombre qui suit', () => {
+    expect(parseQuantityFromName('Eau minérale 1,5L x 6')).toEqual({ quantity: 9000, unit: 'ml' });
+    expect(parseQuantityFromName('Coca 33cl x24')).toEqual({ quantity: 7920, unit: 'ml' });
+    expect(parseQuantityFromName('Soda 1,5L X6')).toEqual({ quantity: 9000, unit: 'ml' });
+    expect(parseQuantityFromName('Yaourt 125g x 4 pots')).toEqual({ quantity: 500, unit: 'g' });
+    // 30 lavages, pas 30 bidons.
+    expect(parseQuantityFromName('Lessive liquide 2L x 30')).toEqual({ quantity: 2000, unit: 'ml' });
+  });
+
+  it('lit "pack de N" et "lot de N" placés après le format', () => {
+    expect(parseQuantityFromName('Eau 1.5 l pack de 6')).toEqual({ quantity: 9000, unit: 'ml' });
+    expect(parseQuantityFromName('Beurre 250 g lot de 2')).toEqual({ quantity: 500, unit: 'g' });
+  });
+
+  it('ne multiplie pas quand le nombre désigne autre chose qu’un contenant', () => {
+    // 30 lavages ne sont pas 30 bidons.
+    expect(parseQuantityFromName('Lessive 2L x 30 lavages')).toEqual({ quantity: 2000, unit: 'ml' });
+    expect(parseQuantityFromName('Jus 1L x2,5')).toEqual({ quantity: 1000, unit: 'ml' });
   });
 });

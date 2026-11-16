@@ -256,6 +256,87 @@ describe('readCoursesUProductPageOnPage (correction manuelle Hyper U)', () => {
     expect(readCoursesUProductPageOnPage()).toEqual({ ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' });
   });
 
+  // 16/11 : lecture sans affichage. La page AFFICHÉE est celle du lait ; la
+  // fiche récupérée est celle des pâtes. Le résultat doit décrire les pâtes,
+  // avec l'adresse réellement servie — preuve que rien n'est lu dans la page
+  // affichée.
+  describe('lecture d’une fiche sans affichage (options.fetchUrl)', () => {
+    const fetchUrl = 'https://www.coursesu.com/p/pates-torti/430633.html';
+    const fetchedHtml = `<html><head><title>Pâtes TORTI</title></head><body>
+      <h1>Pâtes TORTI blé Français PANZANI - 1kg</h1>
+      <div class="actions-container-price"><span class="sale-price" data-item-price="1.51">1,51 €</span></div>
+    </body></html>`;
+
+    function installFetch(response) {
+      installGlobals(
+        `<h1>Lait demi écrémé</h1>
+         <div class="actions-container-price"><span class="sale-price" data-item-price="5.94">5,94 €</span></div>`,
+        'https://www.coursesu.com/drive-hyperu-test'
+      );
+      globalThis.DOMParser = dom.window.DOMParser;
+      globalThis.fetch = vi.fn(async () => response);
+    }
+
+    afterEach(() => {
+      delete globalThis.fetch;
+      delete globalThis.DOMParser;
+    });
+
+    it('lit le prix dans la fiche récupérée, pas dans la page affichée', async () => {
+      installFetch({ ok: true, status: 200, url: fetchUrl, text: async () => fetchedHtml });
+      const result = await readCoursesUProductPageOnPage({ fetchUrl });
+      expect(result).toMatchObject({
+        ok: true,
+        fetched: true,
+        priceEuro: 1.51,
+        priceSource: 'item_price_attr',
+        productUrl: fetchUrl
+      });
+      expect(result.name).toContain('TORTI');
+      expect(globalThis.fetch).toHaveBeenCalledWith(fetchUrl, expect.objectContaining({ credentials: 'include' }));
+    });
+
+    it('signale une réponse en erreur sans rien lire', async () => {
+      installFetch({ ok: false, status: 403, url: fetchUrl, text: async () => '' });
+      expect(await readCoursesUProductPageOnPage({ fetchUrl })).toEqual({ ok: false, code: 'FETCH_HTTP_ERROR', status: 403 });
+    });
+
+    it('refuse une adresse d’un autre site sans lancer de requête', async () => {
+      installFetch({ ok: true, status: 200, url: fetchUrl, text: async () => fetchedHtml });
+      expect(await readCoursesUProductPageOnPage({ fetchUrl: 'https://exemple.test/p/x/1.html' })).toEqual({
+        ok: false,
+        code: 'FETCH_CROSS_ORIGIN'
+      });
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('rend FETCH_FAILED si la requête échoue', async () => {
+      installFetch(null);
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError('NetworkError');
+      });
+      expect(await readCoursesUProductPageOnPage({ fetchUrl })).toEqual({ ok: false, code: 'FETCH_FAILED' });
+    });
+  });
+
+  // 16/11 : une page marquée « en train d'être quittée » n'est jamais lue,
+  // même si elle porte un prix parfaitement lisible — c'est celui du produit
+  // précédent.
+  it('refuse de lire une page marquée comme quittée', () => {
+    installGlobals(`
+      <h1>Lait demi écrémé</h1>
+      <div class="actions-container-price"><span class="sale-price" data-item-price="5.64">5,64 €</span></div>
+    `);
+    expect(readCoursesUProductPageOnPage().ok).toBe(true);
+
+    globalThis.window.__dpsLeavingPage = true;
+    try {
+      expect(readCoursesUProductPageOnPage()).toEqual({ ok: false, code: 'NAVIGATION_PENDING' });
+    } finally {
+      delete globalThis.window.__dpsLeavingPage;
+    }
+  });
+
   // Régression réelle (2026-08-27, capture live sur coursesu.com, magasin
   // Hyper U - Hanches, "Lait UHT demi écrémé - 6 briques de 1L") : un avis
   // client tout en bas de page mentionnait "beaucoup trop d'articles
@@ -781,7 +862,7 @@ describe('readCoursesUSessionStateOnPage', () => {
 // hors de la fonction.
 describe('Injection isolation (chrome.scripting.executeScript ne sérialise que le code source de la fonction)', () => {
   function rebuildFromSource(fn) {
-    // eslint-disable-next-line no-new-func
+     
     return new Function(`return (${fn.toString()});`)();
   }
 
@@ -976,6 +1057,14 @@ describe('Parité bouton flottant ↔ readCoursesUProductPageOnPage', () => {
         </div>
       `
     ],
+    [
+      'fiche « produit indisponible » avec produit de remplacement (16/11)',
+      `
+        <h1>Crème légère U, 20cl</h1>
+        <p>Produit indisponible</p>
+        <div class="product-substitute"><span class="sale-price" data-item-price="1.89">1,89 €</span></div>
+      `
+    ],
     ['page bloquée par un captcha', `<h1>Vérification</h1><p>Merci de résoudre ce captcha.</p>`],
     ['page 404', `<h1>Page introuvable</h1><p>Erreur 404</p>`],
     [
@@ -1037,7 +1126,7 @@ describe('armCoursesUFloatingPickButtonOnPage — garde-fou de page', () => {
 
 describe('Injection isolation — lecteurs Courses U', () => {
   function rebuildFromSource(fn) {
-    // eslint-disable-next-line no-new-func
+     
     return new Function(`return (${fn.toString()});`)();
   }
 
@@ -1447,5 +1536,47 @@ describe('Instantané complet d’une carte de grille Hyper U', () => {
     const candidates = readCoursesUProducts();
     expect(candidates).toHaveLength(1);
     expect(candidates[0]).toMatchObject({ externalProductId: '2100474', barcode: '3760341070335' });
+  });
+});
+
+// Défaut réel du 16/11 (crème légère) : coursesu.com sert parfois une variante
+// « produit indisponible » sans bloc prix officiel, avec un produit de
+// remplacement. Le prix lu hors du bloc officiel décrit cet autre article.
+describe('fiche Hyper U « produit indisponible »', () => {
+  it('refuse un prix lu hors du bloc officiel', () => {
+    installGlobals(
+      `<h1>Crème légère U, 20cl</h1><p>Produit indisponible</p>
+       <div class="product-substitute"><span class="sale-price" data-item-price="1.89">1,89 €</span></div>`,
+      'https://www.coursesu.com/p/creme-legere/1.html'
+    );
+    expect(readCoursesUProductPageOnPage()).toEqual({ ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' });
+  });
+
+  it('refuse aussi le repli sur le texte affiché', () => {
+    installGlobals(
+      `<h1>Crème légère U, 20cl</h1><p>Ce produit n'est plus disponible</p><p>Essayez : 1,89 €</p>`,
+      'https://www.coursesu.com/p/creme-legere/1.html'
+    );
+    expect(readCoursesUProductPageOnPage()).toEqual({ ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' });
+  });
+
+  it("ignore une vignette « Produit indisponible » d'un autre article ou un avis client", () => {
+    installGlobals(
+      `<h1>Crème légère U, 20cl</h1><p>Prix : 1,45 €</p>
+       <div class="product-carousel"><span>Produit indisponible</span></div>
+       <div class="reviews">Ce produit n'est plus disponible dans mon magasin</div>`,
+      'https://www.coursesu.com/p/creme-legere/1.html'
+    );
+    expect(readCoursesUProductPageOnPage()).toMatchObject({ ok: true, priceEuro: 1.45 });
+  });
+
+  it('garde le prix du bloc officiel même si la fiche est indisponible', () => {
+    installGlobals(
+      `<h1>Crème légère U, 20cl</h1>
+       <div class="actions-container-price"><span class="sale-price" data-item-price="1.45">1,45 €</span><span>Produit indisponible</span></div>`,
+      'https://www.coursesu.com/p/creme-legere/1.html'
+    );
+    const page = readCoursesUProductPageOnPage();
+    expect(page).toMatchObject({ ok: true, priceEuro: 1.45, priceSource: 'item_price_attr', available: false });
   });
 });

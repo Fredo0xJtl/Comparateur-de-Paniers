@@ -5,7 +5,7 @@ import { App } from './app/App';
 import './styles.css';
 
 // `import.meta.env.BASE_URL` vaut '/' partout où l'application est servie à
-// la racine (dev, `vite preview`, Raspberry) et '/Comparateur-de-Paniers/'
+// la racine (dev ou `vite preview`) et '/Comparateur-de-Paniers/'
 // pour un build destiné à GitHub Pages — voir `base` dans vite.config.ts.
 // Sans `basename`, le routeur croirait que le préfixe fait partie de la route
 // et n'afficherait aucune page.

@@ -148,12 +148,12 @@ export async function ensureDemoData() {
       // Users add their own stores via the UI; seeding demo stores causes
       // user-saved URLs (Leclerc, Hyper U) to revert on app restart/redeploy.
       // See git log for "URL Persistence Bug" fixes.
-      if ((await db.productCandidates.count()) === 0) {
-        await db.productCandidates.bulkPut(mockProductCandidates);
-      }
-      if ((await db.priceSnapshots.count()) === 0) {
-        await db.priceSnapshots.bulkPut(mockPriceSnapshots);
-      }
+      // DO NOT seed productCandidates / priceSnapshots either : des prix
+      // fictifs n'ont rien à faire dans la base d'un vrai utilisateur (ils
+      // donnaient par exemple une « dernière lecture des prix » vieille de
+      // plusieurs mois à quelqu'un qui n'avait encore rien cherché). Les
+      // données d'exemple ne se chargent plus que par resetDemoData(), bouton
+      // réservé au développement.
 
       const settings = await db.settings.get('default');
       if (!settings) {

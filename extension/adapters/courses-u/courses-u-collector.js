@@ -64,12 +64,24 @@ export async function collectCoursesUStore({ scripting, tabs, tabId, job, store,
   const catalogRouteUrl = needsCatalogRouteFallback
     ? ((await run(scripting, tabId, readCurrentCoursesUUrlOnPage, []))?.href ?? null)
     : null;
+  // Vrai dès qu'une fiche a été AFFICHÉE dans l'onglet (navigation), et
+  // jusqu'au retour explicite sur la route du catalogue. Une fiche lue sans
+  // affichage ne déplace pas l'onglet, mais une fiche précédente a pu le faire.
+  let tabLeftCatalog = false;
   for (const product of products) {
     if (signal.aborted) break;
     productIndex += 1;
     // Randomized gap between products, mirroring the Leclerc collector, so
     // the search cadence doesn't read as a fixed-interval bot pattern.
-    if (!isFirstProduct) await wait(randomJitterMs(500, 1_400), signal);
+    // Même répartition que Leclerc depuis le 16/11 (décision utilisateur) :
+    // 80 % de pauses courtes, 20 % de longues. L'ancienne pause uniforme de
+    // 0,5 à 1,4 s coûtait ≈ 15 s sur 16 produits, soit plus que la lecture des
+    // fiches elle-même. Si un captcha apparaît chez Hyper U, c'est le premier
+    // réglage à remettre comme avant.
+    if (!isFirstProduct) {
+      const delayMs = Math.random() < 0.8 ? randomJitterMs(100, 300) : randomJitterMs(800, 2_500);
+      await wait(delayMs, signal);
+    }
     isFirstProduct = false;
     onProgress({
       storeKey: store.storeKey,
@@ -85,7 +97,10 @@ export async function collectCoursesUStore({ scripting, tabs, tabId, job, store,
     const manualUrl = job.manualUrlOverrides?.hyperu?.[product.productId];
     if (manualUrl) {
       try {
+        const wasAway = tabLeftCatalog;
+        tabLeftCatalog = true;
         const manual = await collectCoursesUManualProduct({ scripting, tabs, tabId, signal, manualUrl });
+        if (manual.fetched === true) tabLeftCatalog = wasAway;
         if (!manual.ok) {
           errors.push({
             storeKey: store.storeKey,
@@ -166,8 +181,11 @@ export async function collectCoursesUStore({ scripting, tabs, tabId, job, store,
     const knownUrl = job.knownProductUrls?.hyperu?.[product.productId];
     if (knownUrl) {
       let known = null;
+      const wasAway = tabLeftCatalog;
+      tabLeftCatalog = true;
       try {
         known = await collectCoursesUManualProduct({ scripting, tabs, tabId, signal, manualUrl: knownUrl });
+        if (known?.fetched === true) tabLeftCatalog = wasAway;
       } catch (error) {
         // Un onglet figé ou fermé compromet la collecte entière quel que soit
         // le chemin qui le détecte : même traitement que le bloc manuel.
@@ -222,11 +240,14 @@ export async function collectCoursesUStore({ scripting, tabs, tabId, job, store,
       // (même piège que côté Leclerc, documenté le 28/08). Sans ça, un
       // raccourci raté transformait la recherche de repli en
       // PRODUCT_SEARCH_INPUT_NOT_FOUND.
-      if (catalogRouteUrl) {
+      // Inutile tant qu'aucune fiche n'a été affichée dans l'onglet (lectures
+      // sans affichage uniquement) : il n'a alors jamais quitté le catalogue.
+      if (catalogRouteUrl && tabLeftCatalog) {
         try {
           await tabs.update(tabId, { url: catalogRouteUrl });
           await waitForCoursesUTabLoad(tabs, tabId, signal);
           await wait(600, signal);
+          tabLeftCatalog = false;
         } catch {
           // Retour impossible : la recherche ci-dessous échouera avec son
           // propre code explicite, pas besoin d'en inventer un ici.
@@ -417,7 +438,22 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
   // franchement "déconnecté".
   const session = await run(scripting, tabId, readCoursesUSessionStateOnPage, []);
   if (session?.signedIn !== true) {
-    return failure(store, 'CART_LOGIN_REQUIRED', { evidence: session?.evidence ?? null }, true);
+    // Non bloquant : si l'écran de connexion ne s'ouvre pas, l'onglet du
+    // magasin reste quand même affiché et le message de l'application guide.
+    // Clic seulement si le site dit clairement « déconnecté » : sur un état
+    // indéterminé, l'utilisateur est peut-être connecté (relecture du 16/11).
+    let login = null;
+    try {
+      if (session?.signedIn === false) login = await run(scripting, tabId, openStoreLoginOnPage, []);
+    } catch {
+      login = null;
+    }
+    return failure(
+      store,
+      'CART_LOGIN_REQUIRED',
+      { evidence: session?.evidence ?? null, loginOpened: login?.opened === true },
+      true
+    );
   }
 
   const results = [];
@@ -565,34 +601,29 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
 // alors le nom/prix du premier résultat de cette page comme s'il s'agissait
 // de la bonne fiche, reproduisant exactement le bug qu'on corrige.
 async function tryAddToCartCoursesUViaProductUrl({ scripting, tabs, tabId, signal, item }) {
-  try {
-    await tabs.update(tabId, { url: item.productUrl });
-  } catch {
-    return { added: false, code: 'CART_DIRECT_URL_NAVIGATION_FAILED' };
-  }
+  // Même navigation et même relecture que collectCoursesUManualProduct (voir
+  // openCoursesUProductPage) : jamais de lecture de la page qu'on quitte.
+  const opened = await openCoursesUProductPage({
+    scripting,
+    tabs,
+    tabId,
+    signal,
+    url: item.productUrl,
+    rethrowScriptTimeout: false
+  });
+  if (!opened.navigated) return { added: false, code: 'CART_DIRECT_URL_NAVIGATION_FAILED' };
+  const page = opened.page;
+  if (page?.code === 'SITE_BLOCKED') return { added: false, captcha: true };
+  if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND') return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_FOUND' };
+  if (!page?.ok) return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_READY' };
+  // Lire un prix n'exige que le document ; cliquer exige que la page ait fini
+  // de brancher ses boutons. On attend donc ici le chargement complet de la
+  // fiche (désormais confirmée comme la bonne), puis le même délai qu'avant.
+  // Le bandeau cookies ne gêne pas la lecture mais peut recouvrir le bouton
+  // d'ajout : on l'écarte juste avant le clic.
   await waitForCoursesUTabLoad(tabs, tabId, signal);
   await runCookieConsentDismissal(scripting, tabId);
-  await wait(600, signal);
-
-  // Même logique de relecture que collectCoursesUManualProduct : la SPA peut
-  // mettre un instant à hydrater la fiche après le chargement du document.
-  // Seul MANUAL_URL_PRICE_NOT_FOUND vaut la peine d'être réessayé —
-  // SITE_BLOCKED et MANUAL_URL_PAGE_NOT_FOUND sont des états terminaux.
-  const deadline = Date.now() + 12_000;
-  let page = null;
-  while (Date.now() < deadline) {
-    if (signal.aborted) throw new Error('DRIVE_JOB_CANCELLED');
-    try {
-      page = await run(scripting, tabId, readCoursesUProductPageOnPage, []);
-    } catch {
-      page = null;
-    }
-    if (page?.ok) break;
-    if (page?.code === 'SITE_BLOCKED') return { added: false, captcha: true };
-    if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND') return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_FOUND' };
-    await wait(500, signal);
-  }
-  if (!page?.ok) return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_READY' };
+  await wait(COURSESU_PAGE_SETTLE_MS, signal);
 
   // Canari de structure (voir readCoursesUProductPageOnPage) : trace, sans
   // rien changer au déroulement, le fait que le prix n'a pu être lu que dans
@@ -629,6 +660,68 @@ async function tryAddToCartCoursesUViaProductUrl({ scripting, tabs, tabId, signa
         quantityConfirmed: outcome.quantityConfirmed
       }
     : { added: false, code: outcome?.code ?? 'ADD_TO_CART_CONTROL_NOT_FOUND' };
+}
+
+// Connexion requise (16/11, demande utilisateur) : au lieu de laisser une page
+// d'accueil quelconque, on ouvre l'écran de connexion DU SITE (clic sur son
+// propre bouton « Se connecter », ou navigation vers son lien de connexion de
+// même origine). L'utilisateur saisit lui-même ses identifiants : le connecteur
+// ne lit ni ne remplit jamais aucun champ. Autonome (injectée par executeScript).
+export function openStoreLoginOnPage() {
+  const isVisible = (element) => element.offsetParent !== null || element.getClientRects().length > 0;
+  const signalOf = (element) =>
+    `${element.textContent} ${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  // Relecture du 16/11 : ciblage strict. Jamais de déconnexion, de création
+  // de compte, de connexion via un autre service, ni de bouton d'un formulaire
+  // déjà affiché (son clic enverrait des identifiants remplis par le navigateur).
+  const FORBIDDEN =
+    /d[ée]connex|d[ée]connect|logout|log-out|signout|sign-out|disconnect|cr[ée]er|inscri|register|google|facebook|apple|paypal/i;
+  const LOGIN_TEXT = /^(se connecter|me connecter|s'identifier|identifiez-vous|connexion)$/i;
+  const LOGIN_HREF = /connexion|login|identification|authentification|signin/i;
+  const decoded = (raw) => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  };
+  const sameOriginUrl = (element) => {
+    const raw = element.getAttribute('href');
+    if (!raw) return null;
+    try {
+      const url = new URL(raw, location.href);
+      return url.origin === location.origin ? url : null;
+    } catch {
+      return null;
+    }
+  };
+  const isSafe = (element) => {
+    if (element.closest('form')) return false;
+    if (FORBIDDEN.test(signalOf(element))) return false;
+    if (element.getAttribute('target') === '_blank') return false;
+    if (element.hasAttribute('href')) {
+      const url = sameOriginUrl(element);
+      if (!url || FORBIDDEN.test(decoded(url.pathname + url.search))) return false;
+    }
+    return true;
+  };
+  const controls = [...document.querySelectorAll('a, button, [role="button"]')];
+  const button = controls.find((element) => isVisible(element) && LOGIN_TEXT.test(signalOf(element)) && isSafe(element));
+  if (button) {
+    button.click();
+    return { opened: true, evidence: 'clic_bouton_connexion' };
+  }
+  const link = controls.find((element) => {
+    const url = sameOriginUrl(element);
+    return url !== null && LOGIN_HREF.test(decoded(url.pathname)) && isSafe(element);
+  });
+  if (link) {
+    location.assign(sameOriginUrl(link).href);
+    return { opened: true, evidence: 'lien_connexion' };
+  }
+  return { opened: false, evidence: null };
 }
 
 // Runs in the page world. Lecture seule du DOM, uniquement — ne cherche
@@ -1233,43 +1326,200 @@ async function waitForCoursesUProducts({ scripting, tabId, signal, expectedQuery
 // jamais passer par la recherche automatique. Nécessite `tabs` (fourni par
 // le service-worker) pour changer l'URL de l'onglet existant.
 async function collectCoursesUManualProduct({ scripting, tabs, tabId, signal, manualUrl }) {
-  try {
-    await tabs.update(tabId, { url: manualUrl });
-  } catch {
-    return { ok: false, code: 'MANUAL_URL_NAVIGATION_FAILED' };
+  // Tester #14 (audit 30/08), même correctif que tester #13 : un
+  // SCRIPT_EXECUTION_TIMEOUT ici doit remonter jusqu'à l'appelant
+  // (collectCoursesUStore) pour y déclencher la sonde de survie, pas être
+  // traité comme "pas encore lisible, on réessaie" — d'où
+  // rethrowScriptTimeout.
+  //
+  // Chemin rapide d'abord : la fiche est lue sans être affichée. Il ne rend
+  // un résultat que s'il est irréprochable ; sinon la navigation classique
+  // ci-dessous prend le relais, avec tous ses diagnostics d'origine (fiche
+  // introuvable, site bloqué, page pas prête).
+  const fetched = await fetchCoursesUProductPage({ scripting, tabId, url: manualUrl });
+  if (fetched) return fetched;
+  const opened = await openCoursesUProductPage({
+    scripting,
+    tabs,
+    tabId,
+    signal,
+    url: manualUrl,
+    rethrowScriptTimeout: true
+  });
+  if (!opened.navigated) return { ok: false, code: 'MANUAL_URL_NAVIGATION_FAILED' };
+  const last = opened.page;
+  // Même preuve que pour la lecture sans affichage : la page finalement
+  // affichée doit porter l'identifiant de la fiche demandée. Un permalien
+  // périmé redirigé vers une page de résultats y ferait lire le premier
+  // produit venu — sans contrôle de nom pour une adresse collée à la main.
+  const expectedId = coursesUProductIdFromUrl(manualUrl);
+  if (last?.ok && expectedId && coursesUProductIdFromUrl(last.productUrl) !== expectedId) {
+    return { ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' };
   }
-  await waitForCoursesUTabLoad(tabs, tabId, signal);
-  await runCookieConsentDismissal(scripting, tabId);
-  await wait(600, signal);
+  if (last?.ok) return last;
+  return last && last.code !== 'NAVIGATION_PENDING'
+    ? last
+    : { ok: false, code: 'MANUAL_URL_PAGE_NOT_READY' };
+}
+
+// Identifiant de fiche d'un permalien coursesu.com (« …/p/<nom>/<id>.html »).
+// Le nom peut être réécrit par le site (redirection vers l'adresse à jour),
+// l'identifiant non : c'est lui qui prouve qu'on a bien reçu la fiche demandée.
+function coursesUProductIdFromUrl(value) {
+  try {
+    return new URL(value).pathname.match(/\/p\/(?:[^/]+\/)?(\d+)\.html$/i)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Lit une fiche produit sans la faire afficher par l'onglet (voir la fin de
+// readCoursesUProductPageOnPage). Rend la lecture si elle est sûre, sinon
+// `null` — jamais une erreur : l'appelant retombe alors sur la navigation.
+//
+// « Sûre » veut dire les trois à la fois :
+//  - la lecture a abouti ;
+//  - le prix vient du bloc prix officiel du magasin (`item_price_attr`), le
+//    seul palier qui ne peut pas être confondu avec un autre montant ;
+//  - l'adresse finalement servie porte le même identifiant de fiche que celle
+//    demandée. Un permalien périmé peut être redirigé vers une page de
+//    résultats (diagnostic réel du 2026-07-29) : sans ce contrôle, on lirait
+//    le premier produit de cette page comme si c'était le bon.
+//
+// Un SCRIPT_EXECUTION_TIMEOUT remonte tel quel, comme pour toute autre
+// injection de la collecte (sonde de survie de collectCoursesUStore).
+async function fetchCoursesUProductPage({ scripting, tabId, url }) {
+  const expectedId = coursesUProductIdFromUrl(url);
+  if (!expectedId) return null;
+  let page;
+  try {
+    page = await run(scripting, tabId, readCoursesUProductPageOnPage, [{ fetchUrl: url }]);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'SCRIPT_EXECUTION_TIMEOUT') throw error;
+    return null;
+  }
+  if (page?.ok !== true || page.fetched !== true || page.priceSource !== 'item_price_attr') {
+    debugLog('product_page_fetch_fallback', { reason: page?.ok ? (page.priceSource ?? 'no_price_source') : (page?.code ?? 'no_result') });
+    return null;
+  }
+  if (coursesUProductIdFromUrl(page.productUrl) !== expectedId) {
+    debugLog('product_page_fetch_fallback', { reason: 'redirected_elsewhere' });
+    return null;
+  }
+  return page;
+}
+
+// Temps laissé à une fiche fraîchement arrivée avant d'accepter une lecture
+// de second rang (prix lu ailleurs que dans le bloc prix officiel) ou de
+// conclure « fiche introuvable » : c'est l'ancienne attente fixe, désormais
+// payée seulement par les fiches qui en ont besoin.
+const COURSESU_PAGE_SETTLE_MS = 600;
+
+// Navigue vers une fiche produit et la lit, sans jamais lire la page qu'on
+// vient de quitter. Commun à la collecte de prix et à l'ajout au panier.
+//
+// Avant (jusqu'au 16/11) : tabs.update, attente de `status === 'complete'`,
+// puis 600 ms fixes. Deux défauts : (1) juste après tabs.update l'onglet peut
+// encore annoncer 'complete' pour l'ANCIENNE page, et rien ne vérifiait que la
+// page avait changé — même famille de bug que celui mesuré chez Leclerc
+// (prix du produit précédent, confiance 100 %) ; (2) les 600 ms étaient payées
+// par chaque fiche, même déjà prête.
+//
+// Maintenant : le document quitté est marqué (markCoursesULeavingPageOnPage),
+// la lecture refuse toute page marquée, et on sonde toutes les 150 ms. Si le
+// marquage échoue, on retombe à l'identique sur l'ancien déroulement.
+//
+// Rend { navigated: false } si la navigation n'a pas pu partir, sinon
+// { navigated: true, page } où `page` est la dernière lecture (ok ou non).
+async function openCoursesUProductPage({ scripting, tabs, tabId, signal, url, rethrowScriptTimeout }) {
+  const isScriptTimeout = (error) => error instanceof Error && error.message === 'SCRIPT_EXECUTION_TIMEOUT';
+  let marked = false;
+  try {
+    marked = (await run(scripting, tabId, markCoursesULeavingPageOnPage, [url]))?.marked === true;
+  } catch (error) {
+    if (rethrowScriptTimeout && isScriptTimeout(error)) throw error;
+    marked = false;
+  }
+  try {
+    await tabs.update(tabId, { url });
+  } catch {
+    // La page n'a pas été quittée : lui retirer le drapeau, sinon toute
+    // lecture ultérieure de ce document le croirait encore en partance.
+    if (marked) await run(scripting, tabId, unmarkCoursesULeavingPageOnPage, []).catch(() => undefined);
+    return { navigated: false };
+  }
+  if (!marked) {
+    await waitForCoursesUTabLoad(tabs, tabId, signal);
+    await runCookieConsentDismissal(scripting, tabId);
+    await wait(COURSESU_PAGE_SETTLE_MS, signal);
+  }
+  // Page marquée : pas d'attente du `status === 'complete'` de l'onglet. Il
+  // n'arrive qu'une fois images et scripts tiers chargés (≈ 0,9 s mesuré sur
+  // téléphone le 16/11), bien après que la fiche et son bloc prix sont dans
+  // le document. La boucle ci-dessous lit dès que le NOUVEAU document a fini
+  // d'être analysé, ce que le drapeau et `rejectLoadingDocument` garantissent.
 
   // La SPA peut mettre un instant à hydrater la fiche produit après le
   // chargement du document — on relit jusqu'à obtenir un résultat exploitable
-  // ou expiration, comme pour waitForCoursesUProducts. Seul
-  // MANUAL_URL_PRICE_NOT_FOUND (prix pas encore affiché) vaut la peine d'être
-  // réessayé : SITE_BLOCKED et MANUAL_URL_PAGE_NOT_FOUND (404 confirmée, ou
-  // nom absent même de document.title) sont des états terminaux — les
-  // retenter jusqu'à expiration ferait juste perdre 12s pour rien.
+  // ou expiration. SITE_BLOCKED est terminal tout de suite ;
+  // MANUAL_URL_PAGE_NOT_FOUND seulement une fois la nouvelle page installée
+  // depuis COURSESU_PAGE_SETTLE_MS (son titre peut ne pas être encore rendu).
   const deadline = Date.now() + 12_000;
-  let last = null;
+  let page = null;
+  let newPageSeenAt = null;
   while (Date.now() < deadline) {
     if (signal.aborted) throw new Error('DRIVE_JOB_CANCELLED');
     try {
-      last = await run(scripting, tabId, readCoursesUProductPageOnPage, []);
+      page = await run(scripting, tabId, readCoursesUProductPageOnPage, [{ rejectLoadingDocument: marked }]);
     } catch (error) {
-      // Tester #14 (audit 30/08), même correctif que tester #13 : un
-      // SCRIPT_EXECUTION_TIMEOUT ici doit remonter jusqu'à l'appelant
-      // (collectCoursesUStore) pour y déclencher la sonde de survie, pas
-      // être traité comme "pas encore lisible, on réessaie" — sinon ce
-      // timeout épuise silencieusement les 12s de ce sondage avant de
-      // retomber sur un simple MANUAL_URL_PAGE_NOT_READY.
-      if (error instanceof Error && error.message === 'SCRIPT_EXECUTION_TIMEOUT') throw error;
-      last = null;
+      if (rethrowScriptTimeout && isScriptTimeout(error)) throw error;
+      page = null;
+      // Une injection qui échoue pendant un changement de page est normale ;
+      // sur un onglet fermé elle ne réussira jamais. Même signal explicite
+      // que waitForCoursesUTabLoad (tester #15, audit 30/08).
+      if (marked) {
+        try {
+          await tabs.get(tabId);
+        } catch {
+          throw new Error('COURSESU_TAB_CLOSED');
+        }
+      }
     }
-    if (last?.ok) return last;
-    if (last?.code === 'SITE_BLOCKED' || last?.code === 'MANUAL_URL_PAGE_NOT_FOUND') return last;
-    await wait(500, signal);
+    if (page?.code === 'SITE_BLOCKED') break;
+    const pending = !page || page.code === 'NAVIGATION_PENDING';
+    if (!pending && newPageSeenAt === null) newPageSeenAt = Date.now();
+    const settled = !marked || (newPageSeenAt !== null && Date.now() - newPageSeenAt >= COURSESU_PAGE_SETTLE_MS);
+    // Le prix du bloc officiel (`item_price_attr`) ne peut pas être confondu
+    // avec un autre montant : on le prend dès qu'il est là. Tout autre palier
+    // de lecture attend que la page soit posée, comme avant.
+    if (page?.ok && (page.priceSource === 'item_price_attr' || settled)) break;
+    if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND' && settled) break;
+    await wait(marked ? 150 : 500, signal);
   }
-  return last?.ok === false ? last : { ok: false, code: 'MANUAL_URL_PAGE_NOT_READY', details: last ?? undefined };
+  return { navigated: true, page };
+}
+
+// Runs in the page world. Marque le document courant comme « en train d'être
+// quitté » juste avant tabs.update (voir openCoursesUProductPage). Le nouveau
+// document repart d'un `window` neuf, donc sans ce drapeau. Le `pageshow`
+// couvre le retour de l'ancien document par l'historique.
+function markCoursesULeavingPageOnPage(targetUrl) {
+  // Une adresse qui ne diffère de la page courante que par son ancre (#…) ne
+  // recharge rien : marquer ce document le rendrait illisible pour de bon.
+  const withoutHash = (value) => String(value || '').split('#')[0];
+  if (String(targetUrl || '').includes('#') && withoutHash(targetUrl) === withoutHash(location.href)) {
+    return { marked: false };
+  }
+  window.__dpsLeavingPage = true;
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) window.__dpsLeavingPage = false;
+  });
+  return { marked: true };
+}
+
+function unmarkCoursesULeavingPageOnPage() {
+  window.__dpsLeavingPage = false;
+  return { marked: false };
 }
 
 async function waitForCoursesUTabLoad(tabs, tabId, signal) {
@@ -1627,9 +1877,34 @@ export function armCoursesUFloatingPickButtonOnPage() {
     const availability = String(ldOffer?.availability || '').toLowerCase();
     const available = availability ? !/outofstock/.test(availability) : !/indisponible|rupture/i.test(availabilityText);
 
+    // Fonction injectée dans la page : pas d'accès aux constantes du module.
+    const UNAVAILABLE_PAGE_PATTERN = /produit (actuellement |momentan[ée]ment )?indisponible|n['’]est plus disponible|plus commercialis[ée]/i;
+    // Texte de la fiche SANS carrousels de suggestions, mini-panier, avis ni
+    // pied de page : une vignette « Produit indisponible » d'un autre article
+    // ou un avis client ne doivent pas faire refuser le prix de CE produit.
+    const mainProductText = () => {
+      const clone = document.body?.cloneNode(true);
+      if (!clone) return '';
+      clone
+        .querySelectorAll(
+          'script, style, noscript, footer, [class*="mini-cart" i], [class*="recommendation" i], [class*="crossell" i], [class*="carousel" i], [class*="suggestion" i], [class*="review" i], [class*="avis" i]'
+        )
+        .forEach((element) => element.remove());
+      return (clone.textContent || '').replace(/\s+/g, ' ');
+    };
     const notFound = /page (introuvable|non trouv[ée]e)|produit introuvable|erreur 404/i.test(text);
     if (notFound || !name) return { ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' };
     if (!Number.isFinite(priceEuro) || priceEuro < 0) return { ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' };
+    // Variante « produit indisponible » (constatée le 16/11 sur la crème
+    // légère) : coursesu.com sert parfois la fiche SANS bloc prix officiel et
+    // affiche à la place un produit de remplacement. Le prix lu hors du bloc
+    // officiel est alors celui de cet autre article. Un prix faux est pire
+    // qu'une absence de prix : on refuse la lecture de second rang dès que la
+    // page annonce l'indisponibilité. Le prix du bloc officiel et celui du
+    // JSON-LD, qui décrivent bien CE produit, ne sont pas concernés.
+    if ((priceSource === 'item_price_attr_hors_bloc' || priceSource === 'texte_affiche') && UNAVAILABLE_PAGE_PATTERN.test(mainProductText())) {
+      return { ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' };
+    }
 
     return {
       ok: true,
@@ -1730,7 +2005,22 @@ async function waitForCoursesUPick({ scripting, tabs, tabId, signal, onProgress,
 // Product schema and product-tile payload when present (exact catalog data,
 // same source readCoursesUProducts trusts for search-result cards), falling
 // back to DOM-text heuristics identical to the search-results reader.
-export function readCoursesUProductPageOnPage() {
+export function readCoursesUProductPageOnPage(options) {
+  // Même garde que côté Leclerc (readLeclercProductPageOnPage, 16/11) : tant
+  // que le document porte le drapeau posé par markCoursesULeavingPageOnPage,
+  // la page affichée est celle qu'on vient de quitter, pas la fiche demandée.
+  // Vérifié DANS la même injection que la lecture, pour qu'aucun changement de
+  // page ne puisse se glisser entre le contrôle et la lecture.
+  if (window.__dpsLeavingPage === true) {
+    return { ok: false, code: 'NAVIGATION_PENDING' };
+  }
+  // Document encore en cours d'analyse : son bloc prix ou son titre peuvent
+  // ne pas être arrivés, et le repli sur le texte affiché y lirait un autre
+  // montant. Demandé par openCoursesUProductPage, qui sonde la page sans
+  // attendre un délai fixe.
+  if (options?.rejectLoadingDocument === true && document.readyState === 'loading') {
+    return { ok: false, code: 'NAVIGATION_PENDING' };
+  }
   // Copie locale de normalizeEan/findEanInText (extension/shared/barcode.js)
   // — une fonction injectée ne peut appeler aucune fonction externe du
   // module. Garder les trois copies de ce fichier synchronisées entre elles
@@ -1753,6 +2043,12 @@ export function readCoursesUProductPageOnPage() {
     return undefined;
   };
 
+  // Toute la lecture tient dans cette fonction interne, dont les paramètres
+  // masquent volontairement les globales `document` et `location` : le même
+  // code lit ainsi soit la page affichée, soit une fiche récupérée sans être
+  // affichée (voir `options.fetchUrl` tout en bas). Corps volontairement non
+  // ré-indenté, pour que l'historique Git reste lisible.
+  const readProductPage = (document, location) => {
   // textContent (pas innerText, non implémenté par jsdom — voir
   // courses-u-real-dom.test.js) : cohérent avec readCoursesUProducts /
   // inspectCoursesUResults dans ce même fichier, qui lisent déjà via
@@ -1969,11 +2265,36 @@ export function readCoursesUProductPageOnPage() {
   const availability = String(ldOffer?.availability || '').toLowerCase();
   const available = availability ? !/outofstock/.test(availability) : !/indisponible|rupture/i.test(availabilityText);
 
+  // Fonction injectée dans la page : pas d'accès aux constantes du module.
+  const UNAVAILABLE_PAGE_PATTERN = /produit (actuellement |momentan[ée]ment )?indisponible|n['’]est plus disponible|plus commercialis[ée]/i;
+  // Texte de la fiche SANS carrousels de suggestions, mini-panier, avis ni
+  // pied de page : une vignette « Produit indisponible » d'un autre article
+  // ou un avis client ne doivent pas faire refuser le prix de CE produit.
+  const mainProductText = () => {
+    const clone = document.body?.cloneNode(true);
+    if (!clone) return '';
+    clone
+      .querySelectorAll(
+        'script, style, noscript, footer, [class*="mini-cart" i], [class*="recommendation" i], [class*="crossell" i], [class*="carousel" i], [class*="suggestion" i], [class*="review" i], [class*="avis" i]'
+      )
+      .forEach((element) => element.remove());
+    return (clone.textContent || '').replace(/\s+/g, ' ');
+  };
   const notFound = /page (introuvable|non trouv[ée]e)|produit introuvable|erreur 404/i.test(text);
   if (notFound || !name) {
     return { ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' };
   }
   if (!Number.isFinite(priceEuro) || priceEuro < 0) {
+    return { ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' };
+  }
+  // Variante « produit indisponible » (constatée le 16/11 sur la crème
+  // légère) : coursesu.com sert parfois la fiche SANS bloc prix officiel et
+  // affiche à la place un produit de remplacement. Le prix lu hors du bloc
+  // officiel est alors celui de cet autre article. Un prix faux est pire
+  // qu'une absence de prix : on refuse la lecture de second rang dès que la
+  // page annonce l'indisponibilité. Le prix du bloc officiel et celui du
+  // JSON-LD, qui décrivent bien CE produit, ne sont pas concernés.
+  if ((priceSource === 'item_price_attr_hors_bloc' || priceSource === 'texte_affiche') && UNAVAILABLE_PAGE_PATTERN.test(mainProductText())) {
     return { ok: false, code: 'MANUAL_URL_PRICE_NOT_FOUND' };
   }
 
@@ -1989,6 +2310,41 @@ export function readCoursesUProductPageOnPage() {
     externalProductId: tileNode?.getAttribute('data-product-id') || document.documentElement.getAttribute('data-product-id') || undefined,
     externalStoreId: document.documentElement.getAttribute('data-store-id') || 'courses-u-store'
   };
+  };
+
+  // Lecture SANS affichage (16/11). Le serveur de coursesu.com renvoie la
+  // fiche complète, bloc prix du magasin sélectionné compris, dans le HTML
+  // lui-même : inutile de faire charger à l'onglet ses images et ses scripts
+  // pour lire un prix. Mesuré sur téléphone : 16 fiches sur 16 donnent le même
+  // prix que par navigation, en ≈ 0,26 s au lieu de ≈ 0,9 s. Et comme l'onglet
+  // ne change pas de page, lire « la page d'avant » devient impossible.
+  //
+  // Même origine obligatoire (sinon le navigateur refuse la requête ou
+  // n'envoie pas la session du magasin). Tout résultat douteux est laissé à
+  // l'appelant, qui retombe sur la navigation classique — voir
+  // fetchCoursesUProductPage.
+  if (typeof options?.fetchUrl === 'string') {
+    let target;
+    try {
+      target = new URL(options.fetchUrl);
+    } catch {
+      return { ok: false, code: 'FETCH_FAILED' };
+    }
+    if (target.origin !== location.origin) return { ok: false, code: 'FETCH_CROSS_ORIGIN' };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6_000);
+    // `no-store` : jamais une copie gardée par le navigateur, toujours le prix
+    // que le site sert maintenant.
+    return fetch(target.href, { credentials: 'include', cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return { ok: false, code: 'FETCH_HTTP_ERROR', status: response.status };
+        const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+        return { ...readProductPage(parsed, { href: response.url || target.href }), fetched: true };
+      })
+      .catch(() => ({ ok: false, code: 'FETCH_FAILED' }))
+      .finally(() => clearTimeout(timer));
+  }
+  return readProductPage(document, location);
 }
 
 function inspectCoursesUSearchNavigation(expectedQuery) {
@@ -2238,7 +2594,7 @@ export function readCoursesUProducts() {
       ...(unitPriceEuro !== undefined ? { unitPriceEuro, unitPriceUnit } : {}),
       available:
         !/indisponible|rupture/i.test(text) &&
-        !Boolean(node.querySelector('button[disabled][aria-label*="ajouter" i], button[aria-label*="indisponible" i]')),
+        !node.querySelector('button[disabled][aria-label*="ajouter" i], button[aria-label*="indisponible" i]'),
       ...(() => {
         const promotion = node.querySelector(
           '.promotion-label, [class*="promotion" i], [class*="promo-" i], [data-testid*="promotion" i]'
@@ -2269,12 +2625,6 @@ export function readCoursesUProducts() {
     }
   }
   return [...mergedByIdentity.values()];
-}
-
-export function parseCoursesUDisplayedPrice(text) {
-  const matches = [...String(text || '').matchAll(/(\d{1,4})(?:[,.](\d{2})\s*€|\s*€\s*(\d{2}))/gi)];
-  const match = /prix r[ée]duit/i.test(text) && matches.length > 1 ? matches[1] : matches[0];
-  return match ? Number(`${match[1]}.${match[2] || match[3]}`) : NaN;
 }
 
 function inspectCoursesUResults() {

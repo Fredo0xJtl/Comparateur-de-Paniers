@@ -106,9 +106,9 @@ describe('unitPriceGapIsSignificant', () => {
 
 describe('formatUnitPriceLabel', () => {
   it('écrit l’unité telle que les enseignes l’affichent', () => {
-    expect(formatUnitPriceLabel(resolveUnitPriceBasis({ priceEuro: 5.94, quantity: 6, unit: 'L' })!)).toBe('0.99 €/L');
+    expect(formatUnitPriceLabel(resolveUnitPriceBasis({ priceEuro: 5.94, quantity: 6, unit: 'L' })!)).toBe('0,99 €/L');
     expect(formatUnitPriceLabel(resolveUnitPriceBasis({ priceEuro: 2.56, quantity: 375, unit: 'g' })!)).toBe(
-      '6.83 €/kg'
+      '6,83 €/kg'
     );
   });
 });

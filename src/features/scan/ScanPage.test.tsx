@@ -74,9 +74,9 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
 }
 
 async function submitBarcode(barcode: string) {
-  const input = screen.getByLabelText('Code-barres saisi à la main');
+  const input = screen.getByLabelText('Ou tape le code-barres (les chiffres sous les barres)');
   fireEvent.change(input, { target: { value: barcode } });
-  fireEvent.click(screen.getByRole('button', { name: 'Rechercher en local' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Chercher ce code-barres' }));
 }
 
 function renderScanPage() {
@@ -257,9 +257,9 @@ describe('ScanPage — ajout direct au scan (sans confirmation)', () => {
     });
 
     renderScanPage();
-    const input = screen.getByLabelText('Code-barres saisi à la main');
+    const input = screen.getByLabelText('Ou tape le code-barres (les chiffres sous les barres)');
     fireEvent.change(input, { target: { value: barcode } });
-    const submitButton = screen.getByRole('button', { name: 'Rechercher en local' });
+    const submitButton = screen.getByRole('button', { name: 'Chercher ce code-barres' });
     // Deux clics synchrones, avant que le premier setBarcodeBusy(true) n'ait
     // pu re-render et désactiver le bouton — c'est exactement le scénario
     // que le garde par ref doit couvrir (l'état seul serait trop lent).

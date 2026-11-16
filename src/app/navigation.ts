@@ -6,7 +6,7 @@ export type AppRoute = {
 
 export const appRoutes = [
   { path: '/', label: 'Accueil', shortLabel: 'Accueil' },
-  { path: '/scan', label: 'Scan', shortLabel: 'Scan' },
+  { path: '/scan', label: 'Ajouter un produit', shortLabel: 'Ajouter' },
   { path: '/produits', label: 'Produits', shortLabel: 'Produits' },
   { path: '/liste', label: 'Liste de courses', shortLabel: 'Liste' },
   { path: '/comparaison', label: 'Comparaison', shortLabel: 'Comparer' },

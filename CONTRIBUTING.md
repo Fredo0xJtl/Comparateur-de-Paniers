@@ -34,6 +34,7 @@ Ces quatre commandes doivent passer — ce sont exactement celles que l'intégra
 ```bash
 npm run test
 npm run typecheck
+npm run lint
 npm run privacy:check
 npm run build
 ```

@@ -96,8 +96,8 @@ function isAllowedSenderSync(sender) {
 }
 
 // Adresse déclarée par l'utilisateur lui-même dans la page d'options, pour
-// une installation qu'il héberge (ordinateur, NAS, Raspberry Pi, domaine
-// personnel). Deux conditions cumulatives, et non une seule :
+// une installation locale ou un domaine qu'il héberge. Deux conditions
+// cumulatives, et non une seule :
 //   1. l'origine figure dans la liste enregistrée (storage.local) ;
 //   2. Firefox confirme que la permission d'hôte correspondante est
 //      RÉELLEMENT accordée.

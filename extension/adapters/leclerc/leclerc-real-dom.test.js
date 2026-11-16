@@ -713,6 +713,20 @@ describe('readLeclercProductPageOnPage', () => {
 
     expect(readLeclercProductPageOnPage()).toEqual({ ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' });
   });
+
+  it("refuse de lire une fiche pourtant complète tant que cette page est en train d'être quittée", () => {
+    // Bug réel du 15/11 : cette fiche est celle du produit PRÉCÉDENT, encore
+    // affichée pendant que la navigation vers la suivante est en cours.
+    installGlobals(`
+      <h1 class="titre-fiche">Brioche tressée Pasquier - 500g</h1>
+      <span itemprop="price" content="2,41"></span>
+    `);
+    Object.defineProperty(document.body, 'innerText', { value: document.body.textContent, configurable: true });
+    expect(readLeclercProductPageOnPage().ok).toBe(true);
+
+    window.__dpsLeavingPage = true;
+    expect(readLeclercProductPageOnPage()).toEqual({ ok: false, code: 'NAVIGATION_PENDING' });
+  });
 });
 
 describe('clickAddToCartOnLeclercProductPageOnPage', () => {
@@ -1153,7 +1167,7 @@ describe('readLeclercSessionStateOnPage', () => {
 // identifiant hors de la fonction.
 describe('Injection isolation (chrome.scripting.executeScript ne sérialise que le code source de la fonction)', () => {
   function rebuildFromSource(fn) {
-    // eslint-disable-next-line no-new-func
+     
     return new Function(`return (${fn.toString()});`)();
   }
 

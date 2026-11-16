@@ -18,7 +18,11 @@ export default defineConfig({
       // durée du run doublait (55 s contre 14 s).
       '**/.claude/worktrees/**',
       '**/dist/**',
-      '**/graphify-out/**'
+      '**/graphify-out/**',
+      // Ce contrôle est exécuté directement par Node dans le workflow Pages.
+      // Vitest le découvrirait aussi par son suffixe `.test.mjs`, mais ne peut
+      // pas enregistrer les tests du module natif `node:test`.
+      'tools/pages-workflow.test.mjs'
     ]
   }
 });

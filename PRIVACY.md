@@ -30,7 +30,7 @@ Toutes les autres fonctions — comparaison, listes, historique, sauvegardes —
 
 ### Collecte des prix Drive (extension de navigateur)
 
-Le connecteur facultatif pilote le site de l'enseigne dans un véritable onglet de navigateur, avec la session de l'utilisateur, exactement comme le ferait une visite manuelle. Il ne détient de permissions que pour `leclercdrive.fr` et `coursesu.com`, n'envoie rien à un tiers, et conserve son état dans le stockage de session du navigateur. Ouvrir le site d'une enseigne fait entrer l'utilisateur dans la politique de confidentialité de cette enseigne.
+Le connecteur facultatif pilote le site de l'enseigne dans un véritable onglet de navigateur, avec la session de l'utilisateur, exactement comme le ferait une visite manuelle. Il ne détient de permissions que pour `leclercdrive.fr` et `coursesu.com`, n'envoie rien à un tiers, et conserve son état dans le stockage de session du navigateur. Chez Courses U, il peut lire une fiche produit déjà connue en la demandant au site depuis l'onglet du magasin, sans l'afficher : la demande part uniquement vers `coursesu.com`, comme une visite de la fiche. Ouvrir le site d'une enseigne fait entrer l'utilisateur dans la politique de confidentialité de cette enseigne.
 
 Le remplissage de panier facultatif peut rechercher des produits et cliquer sur « Ajouter au panier » dans les onglets d'enseigne, mais uniquement après une action visible de l'utilisateur et un consentement explicite au premier usage. Il ne valide aucune commande, n'accède à aucun moyen de paiement et n'extrait aucun identifiant. Les liens produits manuels restent disponibles.
 
@@ -38,7 +38,7 @@ Le remplissage de panier facultatif peut rechercher des produits et cliquer sur 
 
 En dehors des deux sites d'enseigne ci-dessus, le connecteur ne se relie qu'à **une seule adresse** : celle de l'application publique, inscrite dans son paquet. Il ne lit, ne modifie et n'observe aucune autre page visitée.
 
-Une seconde possibilité existe pour ceux qui hébergent l'application eux-mêmes — sur leur ordinateur, un NAS, un Raspberry Pi ou leur propre nom de domaine. Leur adresse ne peut par nature pas figurer dans un paquet distribué à tout le monde : elle se déclare dans les réglages de l'extension, et **Firefox demande alors un accord explicite pour cette adresse, et pour elle seule**. Le paquet déclare la permission correspondante comme *facultative* : rien n'est accordé à l'installation, et l'autorisation peut être retirée à tout moment, depuis les réglages de l'extension ou depuis « Gérer les extensions » dans Firefox.
+Une seconde possibilité existe pour ceux qui testent l'application sur leur ordinateur ou l'hébergent sous leur propre nom de domaine. Leur adresse ne peut par nature pas figurer dans un paquet distribué à tout le monde : elle se déclare dans les réglages de l'extension, et **Firefox demande alors un accord explicite pour cette adresse, et pour elle seule**. Le paquet déclare la permission correspondante comme *facultative* : rien n'est accordé à l'installation, et l'autorisation peut être retirée à tout moment, depuis les réglages de l'extension ou depuis « Gérer les extensions » dans Firefox.
 
 Les adresses en `http://` ne sont acceptées que sur la machine elle-même (`localhost`). Ailleurs, une page transmise en clair pourrait être imitée par quiconque s'interpose sur le réseau, et hériterait du droit de piloter le connecteur.
 
@@ -50,7 +50,7 @@ Ne publie jamais, dans une issue ou un commit, de sauvegarde réelle, de capture
 
 ### Le fichier de diagnostic
 
-Le bouton « Télécharger le diagnostic », sur la page Comparer, produit un fichier JSON destiné à comprendre pourquoi une collecte de prix a échoué. Il reste sur ton appareil : rien n'est envoyé automatiquement.
+Le bouton « Télécharger le rapport technique », sur la page Comparer, produit un fichier JSON destiné à comprendre pourquoi une collecte de prix a échoué. Il reste sur ton appareil : rien n'est envoyé automatiquement.
 
 Ce fichier contient le nom des produits relevés, les prix trouvés et l'adresse des fiches consultées — ces adresses identifient le drive, donc la zone où tu fais tes courses. **Il ne doit pas être publié dans une issue.**
 

@@ -9,8 +9,8 @@
 // utilisateurs : ils installent l'extension, ouvrent le site public, tout
 // fonctionne sans aucun réglage réseau.
 //
-// Reste ceux qui hébergent l'application eux-mêmes — sur leur ordinateur, un
-// NAS, un Raspberry Pi ou leur propre nom de domaine. Leur adresse ne peut
+// Reste ceux qui testent l'application sur leur ordinateur ou l'hébergent
+// sous leur propre nom de domaine. Leur adresse ne peut
 // par définition pas figurer dans un paquet distribué : elle n'existe que
 // chez eux, et y inscrire des adresses locales génériques
 // (`localhost`, une IP privée, un nom `.local`) reviendrait à autoriser

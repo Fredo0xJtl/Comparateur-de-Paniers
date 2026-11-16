@@ -45,11 +45,11 @@ export function WelcomeDialog({ state, onClose }: WelcomeDialogProps) {
         // la ferme.
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id="welcome-title">Bienvenue — trois choses à faire une seule fois</h2>
+        <h2 id="welcome-title">Bienvenue — trois choses à installer, une seule fois</h2>
         <p className="welcomeIntro">
-          Cette application compare vos courses entre Leclerc Drive et Courses U, puis remplit votre panier à votre
-          place. Pour lire les prix sur les sites des magasins, elle a besoin d’un petit programme à ajouter à Firefox :
-          le connecteur.
+          Cette application compare tes courses entre Leclerc Drive et Courses U, puis remplit ton panier à ta place.
+          Pour lire les prix sur les sites des magasins, elle a besoin d’un petit programme à ajouter à Firefox : le
+          connecteur.
         </p>
 
         <ol className="welcomeSteps">
@@ -83,8 +83,8 @@ export function WelcomeDialog({ state, onClose }: WelcomeDialogProps) {
         </ol>
 
         <p className="welcomeNote">
-          Vos listes, vos prix et vos magasins restent sur cet appareil. Rien n’est envoyé sur Internet, il n’y a ni
-          compte à créer ni serveur.
+          Tes listes, tes prix et tes magasins restent sur cet appareil : pas de compte à créer, rien n’est stocké
+          ailleurs.
         </p>
         {state.support.isMobile && (
           <p className="welcomeNote">
@@ -95,12 +95,12 @@ export function WelcomeDialog({ state, onClose }: WelcomeDialogProps) {
 
         <div className="welcomeActions">
           <button ref={closeRef} type="button" className="primaryButton" onClick={onClose}>
-            {remaining === 0 ? 'Commencer' : 'Fermer'}
+            {remaining === 0 ? 'Commencer' : 'Plus tard'}
           </button>
         </div>
         {remaining > 0 && (
           <p className="welcomeFootnote">
-            Une fois le connecteur ajouté, rechargez cette page : l’étape se cochera toute seule.
+            Une fois le connecteur ajouté, recharge cette page : l’étape se cochera toute seule. Le bouton « Aide », en haut, rouvre cette fenêtre.
           </p>
         )}
       </div>

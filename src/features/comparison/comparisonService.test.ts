@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/db';
-import { demoProducts, ensureDemoData, resetDemoData } from '../../db/seed';
+import { demoProducts, resetDemoData } from '../../db/seed';
 import { addProductToActiveList } from '../shopping-list/shoppingListService';
 import { loadActiveComparison } from './comparisonService';
 
@@ -63,23 +63,18 @@ describe('comparisonService', () => {
     expect(comparison.result).toBeNull();
   });
 
-  it('backfills missing mock comparison data before loading an older active list', async () => {
+  it('ne fabrique aucun prix pour une liste dont rien n’a encore été cherché', async () => {
     await db.delete();
     await db.open();
     await db.products.bulkPut(demoProducts);
     await addProductToActiveList('prod-ice-tea-peche');
 
-    // Déclenche explicitement le même backfill que loadActiveComparison
-    // appelle en interne, pour pouvoir vérifier son effet (tables vides →
-    // repeuplées) avant de rendre les prix "réels" pour la suite du test.
-    await ensureDemoData();
-    expect(await db.productCandidates.count()).toBeGreaterThanOrEqual(3);
-    expect(await db.priceSnapshots.count()).toBeGreaterThanOrEqual(3);
-    await markPriceSnapshotsAsFreshRealPrices();
-
     const comparison = await loadActiveComparison();
 
-    expect(comparison.result?.totals.leclerc).toBe(1.89);
+    expect(await db.productCandidates.count()).toBe(0);
+    expect(await db.priceSnapshots.count()).toBe(0);
+    expect(comparison.result?.totals.leclerc).toBeNull();
+    expect(comparison.result?.totals.hyperu).toBeNull();
   });
 
   it('can refresh active prices before returning comparison data', async () => {

@@ -266,6 +266,9 @@ export function createDriveJobRunner({
       // all-background run) there's nothing to hand focus back from, and
       // forcing it would yank the user out of whatever they were doing.
       let didForegroundAnyTab = false;
+      // Onglet magasin laissé sur son écran de connexion (CART_LOGIN_REQUIRED) :
+      // c'est lui qu'on affiche à la fin, pas l'application (demande du 16/11).
+      let loginTabId = null;
       // Products already marked "not_found" for this store within the last
       // 14 days (see buildSearchMemoryHints in driveRefreshService.ts) are
       // filtered out below before ever reaching the collector — they get no
@@ -448,6 +451,13 @@ export function createDriveJobRunner({
               observations.push(...(storeResult.observations ?? []));
               errors.push(...(storeResult.errors ?? []));
               keepTabOpen = storeResult.keepTabOpen === true;
+              if (
+                keepTabOpen &&
+                loginTabId === null &&
+                (storeResult.errors ?? []).some((entry) => entry?.code === 'CART_LOGIN_REQUIRED')
+              ) {
+                loginTabId = tab.id;
+              }
             } catch (error) {
               const failure = describeStoreFailure(error);
               const { shouldRetryWithinJob, countsAsStoreFailure } = classifyErrorCode(failure.code);
@@ -539,7 +549,13 @@ export function createDriveJobRunner({
         // Skipped when nothing was ever foregrounded (e.g. an all-Hyper-U
         // run): stealing focus back then would interrupt the user for no
         // reason, since their own tab was never taken from them.
-        if (didForegroundAnyTab && Number.isInteger(callerTabId)) {
+        if (Number.isInteger(loginTabId)) {
+          try {
+            await tabs.update(loginTabId, { active: true });
+          } catch {
+            // Non-fatal : l'utilisateur a pu fermer l'onglet entre-temps.
+          }
+        } else if (didForegroundAnyTab && Number.isInteger(callerTabId)) {
           try {
             await tabs.update(callerTabId, { active: true });
           } catch {

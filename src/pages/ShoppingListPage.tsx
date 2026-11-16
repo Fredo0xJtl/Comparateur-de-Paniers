@@ -1,4 +1,6 @@
+import { ListAlreadyUsedNotice } from '../features/shopping-list/ListAlreadyUsedNotice';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { listProducts } from '../db/seed';
 import {
   addProductToActiveList,
@@ -21,6 +23,9 @@ export function ShoppingListPage() {
   const [message, setMessage] = useState('');
   const [copyFallbackText, setCopyFallbackText] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  // « Nouvelle liste » range la liste en cours sans moyen de la rouvrir
+  // depuis l'application : confirmation, comme pour « Vider la liste » (16/11).
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -76,15 +81,19 @@ export function ShoppingListPage() {
         ...current,
         [row.item.id]: String(row.item.wantedQuantity)
       }));
-      setMessage('Quantite inchangee.');
+      setMessage('Quantité inchangée : saisir un nombre entier à partir de 1.');
       return;
     }
 
-    await updateShoppingListItemQuantity(row.item.id, wantedQuantity);
-    setMessage('Quantité mise à jour.');
-    setCopyFallbackText('');
-    setConfirmClear(false);
-    await refreshList();
+    try {
+      await updateShoppingListItemQuantity(row.item.id, wantedQuantity);
+      setMessage('Quantité mise à jour.');
+      setCopyFallbackText('');
+      setConfirmClear(false);
+      await refreshList();
+    } catch {
+      setMessage("La quantité n'a pas pu être enregistrée.");
+    }
   }
 
   async function handleRemove(row: ShoppingListRow) {
@@ -105,9 +114,10 @@ export function ShoppingListPage() {
 
   async function handleArchive() {
     await archiveActiveShoppingList();
-    setMessage('Liste archivée. Une nouvelle liste active sera créée au prochain ajout.');
+    setMessage('Nouvelle liste commencée. Tes produits restent dans la page Produits.');
     setCopyFallbackText('');
     setConfirmClear(false);
+    setConfirmArchive(false);
     await refreshList();
   }
 
@@ -126,8 +136,8 @@ export function ShoppingListPage() {
   return (
     <section className="pageStack" aria-labelledby="list-title">
       <div className="pageTitle">
-        <h2 id="list-title">Liste de courses active</h2>
-        <p className="lead">Gère tes articles et ajoute tes favoris en un clic.</p>
+        <h2 id="list-title">Ma liste de courses</h2>
+        <p className="lead">Ce que tu veux acheter cette fois-ci. Une fois la liste prête, compare les prix.</p>
       </div>
 
       {message && <p className="panelText">{message}</p>}
@@ -139,23 +149,29 @@ export function ShoppingListPage() {
 
       {status === 'ready' && (
         <>
-          <ListImportPanel onImported={() => void refreshList()} />
-
-          <details className="shoppingListPanel">
+          {rows.length > 0 && <ListAlreadyUsedNotice onNewList={refreshList} />}
+          <details className="shoppingListPanel" open>
             <summary>
               <span>Articles de la liste</span>
               <span className="countBadge">{rows.length}</span>
             </summary>
 
             {rows.length === 0 ? (
-              <p className="panelText">Aucun article pour le moment.</p>
+              <>
+                <p className="panelText">Ta liste est vide. Commence par ajouter un produit.</p>
+                <div className="cardActions">
+                  <Link className="buttonLink" to="/scan">
+                    Ajouter un produit
+                  </Link>
+                </div>
+              </>
             ) : (
               <div className="shoppingRows">
                 {rows.map((row) => (
                   <article className="shoppingRow" key={row.item.id}>
                     <div>
                       <h4>{row.product.name}</h4>
-                      <p>{row.product.brand ?? 'Marque non renseignée'}</p>
+                      {row.product.brand && <p>{row.product.brand}</p>}
                     </div>
                     <label>
                       <span>Quantité</span>
@@ -188,15 +204,43 @@ export function ShoppingListPage() {
               </div>
             )}
 
-            <div className="cardActions">
-              <button className="secondaryButton" type="button" onClick={() => void handleCopy()}>
-                Copier la liste
-              </button>
-              <button className="secondaryButton" type="button" onClick={() => void handleArchive()}>
-                Archiver
-              </button>
-            </div>
+            {rows.length > 0 && (
+              <div className="cardActions">
+                <button className="secondaryButton" type="button" onClick={() => void handleCopy()}>
+                  Copier la liste
+                </button>
+                <button className="secondaryButton" type="button" onClick={() => setConfirmArchive(true)}>
+                  Nouvelle liste
+                </button>
+              </div>
+            )}
+            {confirmArchive && rows.length > 0 && (
+              <div className="confirmPanel" role="alert">
+                <p>
+                  Commencer une nouvelle liste vide ? La liste actuelle sera rangée et ne s’affichera plus ici ; tes
+                  produits restent dans la page Produits.
+                </p>
+                <button className="primaryButton" type="button" onClick={() => void handleArchive()}>
+                  Nouvelle liste
+                </button>
+                <button className="secondaryButton" type="button" autoFocus onClick={() => setConfirmArchive(false)}>
+                  Annuler
+                </button>
+              </div>
+            )}
           </details>
+
+          {/* L'étape suivante juste sous la liste, pas tout en bas de page. */}
+          {rows.length > 0 && (
+            <div className="cardActions cardActionsCentered">
+              <Link className="buttonLink" to="/scan">
+                Ajouter un produit
+              </Link>
+              <Link className="primaryButton" to="/comparaison">
+                Comparer les prix
+              </Link>
+            </div>
+          )}
 
           <details className="shoppingListPanel shoppingListPanelFavorites" open>
             <summary>
@@ -224,6 +268,8 @@ export function ShoppingListPage() {
             })()}
           </details>
 
+          <ListImportPanel onImported={() => void refreshList()} />
+
           {/* Hors des deux <details> ci-dessus : reste accessible tout en
               bas de la page, même volets fermés. */}
           <div className="cardActions cardActionsCentered">
@@ -239,11 +285,15 @@ export function ShoppingListPage() {
 
           {confirmClear && (
             <div className="confirmPanel">
-              <p>Confirmer le vidage de la liste active ?</p>
+              <p>
+                {rows.length > 1
+                  ? `Vider la liste ? Les ${rows.length} produits en seront retirés (ils restent dans la page Produits).`
+                  : 'Vider la liste ? Le produit en sera retiré (il reste dans la page Produits).'}
+              </p>
               <button className="dangerButton" type="button" onClick={() => void handleClearConfirmed()}>
                 Confirmer
               </button>
-              <button className="secondaryButton" type="button" onClick={() => setConfirmClear(false)}>
+              <button className="secondaryButton" type="button" autoFocus onClick={() => setConfirmClear(false)}>
                 Annuler
               </button>
             </div>

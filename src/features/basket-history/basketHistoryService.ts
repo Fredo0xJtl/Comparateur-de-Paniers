@@ -1,4 +1,5 @@
 import { db } from '../../db/db';
+import { roundMoney } from '../comparison/unitNormalization';
 import { type StoreKey, type ValidatedBasket, type ValidatedBasketItem } from '../../types/domain';
 
 export type RecordValidatedBasketInput = {
@@ -87,10 +88,6 @@ export async function getSavingsSummary(): Promise<{ estimated: number; validate
     validated: roundMoney(validated),
     realized: roundMoney(realized)
   };
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
 }
 
 function createId(prefix: string) {

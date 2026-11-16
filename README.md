@@ -42,7 +42,7 @@ Ce qu'il ne fait **jamais** : passer commande, toucher à un moyen de paiement, 
 
 ### Ce qu'il faut envoyer
 
-Dans l'application, page **Comparer**, un bouton **« Télécharger le diagnostic »** apparaît après une comparaison. Il enregistre un fichier qui explique ce qui s'est passé.
+Dans l'application, page **Comparer**, un bouton **« Télécharger le rapport technique »** apparaît après une comparaison. Il enregistre un fichier qui explique ce qui s'est passé.
 
 **Ne publiez pas ce fichier tel quel dans un message public.** Il contient le nom des produits de votre liste et les adresses des fiches consultées — donc, indirectement, vos habitudes de courses et la ville où vous les faites.
 
@@ -118,6 +118,7 @@ Vite affiche l'adresse locale à ouvrir. Le serveur tourne en HTTPS avec un cert
 | `npm run build:pages` | Build destiné à GitHub Pages, qui sert le site sous `/<dépôt>/` et non à la racine. Ajoute aussi `404.html`, sans lequel un lien direct ou un simple rechargement de page renverrait une erreur. |
 | `npm run test` | Suite de tests (Vitest). |
 | `npm run typecheck` | Vérification TypeScript. |
+| `npm run lint` | Relecture automatique du code (ESLint). |
 | `npm run privacy:check` | Refuse tout appel réseau applicatif hors de la liste autorisée. |
 | `npm run extension:check` | Valide le manifeste du connecteur. |
 | `npm run extension:build:firefox` | Construit le connecteur Firefox distribuable. |
@@ -129,7 +130,7 @@ Les instructions de compilation reproductibles du connecteur — celles fournies
 
 ## Héberger l'application soi-même
 
-Le connecteur ne se relie qu'aux adresses qu'il connaît. Votre propre adresse — ordinateur, NAS, Raspberry Pi, nom de domaine personnel — ne peut pas figurer dans un paquet distribué à tout le monde : c'est vous qui la déclarez.
+Le connecteur ne se relie qu'aux adresses qu'il connaît. Une adresse de développement locale ou d'auto-hébergement ne peut pas figurer dans un paquet distribué à tout le monde : c'est vous qui la déclarez.
 
 1. Ouvrez votre installation dans un onglet et copiez l'adresse affichée dans la barre du navigateur.
 2. Ouvrez les réglages de l'extension : menu ☰ → **Modules et thèmes** → **Comparateur de Paniers — Connecteur Drive** → onglet **Préférences**.

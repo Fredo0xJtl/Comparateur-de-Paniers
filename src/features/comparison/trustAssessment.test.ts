@@ -15,6 +15,15 @@ const coverage = (covered = 1): StoreCoverage => ({
 });
 
 describe('assessComparisonTrust', () => {
+  it('ne compte pas comme « prix sûr » un produit sans prix', () => {
+    const report = assessComparisonTrust({
+      decisions: [decision(), decision({ itemId: 'item-2', productId: 'product-2', price: undefined })],
+      coverage: { leclerc: coverage(), hyperu: coverage() }
+    });
+    expect(report.summary.itemCount).toBe(2);
+    expect(report.summary.trustedDecisionCount).toBe(1);
+  });
+
   it('déclare fiable une comparaison complète sans anomalie', () => {
     const report = assessComparisonTrust({ decisions: [decision()], coverage: { leclerc: coverage(), hyperu: coverage() } });
     expect(report.status).toBe('trusted');

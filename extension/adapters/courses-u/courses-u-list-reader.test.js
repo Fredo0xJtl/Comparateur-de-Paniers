@@ -171,7 +171,7 @@ describe('readCoursesUWishlistOnPage', () => {
 
 describe('Injection isolation — lecteur de listes Courses U', () => {
   function rebuildFromSource(fn) {
-    // eslint-disable-next-line no-new-func
+     
     return new Function(`return (${fn.toString()});`)();
   }
 

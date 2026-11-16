@@ -2,13 +2,16 @@
    avant, chaque couleur était répétée en dur à chaque usage — impossible à
    retoucher globalement, et aucun moyen de proposer un mode sombre sans
    réécrire tout le fichier. Seules les couleurs les plus réutilisées
-   (bordures, fonds, texte, vert de marque) sont tokenisées ; quelques
-   teintes d'accent rares (alertes danger/warning à fond clair) restent en
-   dur — écart mineur assumé en mode sombre plutôt qu'un refactor complet
-   pour un gain marginal sur des éléments secondaires. */
+   (bordures, fonds, texte, vert de marque) sont tokenisées ; depuis le
+   16/11, les fonds d'alerte et de bouton pressé le sont aussi (ils restaient
+   clairs en thème sombre, texte clair dessus : illisible). */
 :root {
   --color-text: #172018;
   --color-text-faint: #66725f;
+  --color-text-muted: #4c5648;
+  --color-danger-text: #9f2f25;
+  --color-warning-text: #8f3a1c;
+  --color-success-text: #2c6e3f;
   --color-bg-page: #f7f7f2;
   --color-bg-page-gradient-top: rgba(247, 247, 242, 0.95);
   --color-bg-page-gradient-bottom: rgba(239, 242, 236, 0.95);
@@ -20,7 +23,21 @@
   --color-brand-hover: #1a3f2a;
   --color-brand-text: #2d5a3d;
   --color-danger-border: #e0b9b4;
+  /* Texte posé sur le vert de marque : blanc dans les deux thèmes (le fond de
+     page sombre utilisé avant donnait un contraste d'environ 3:1 en sombre). */
+  --color-on-brand: #ffffff;
+  --color-alert-bg: #fff7f4;
+  --color-alert-bg-strong: #fbe9e7;
+  --color-pressed-bg: #f5f5f2;
+  --color-button-border: #bdc8b7;
+  --color-soft-brand-bg: #eef6ec;
+  --color-soft-brand-bg-hover: #e3f0de;
+  --color-soft-brand-border: #cfe3c8;
 
+  /* Indique au navigateur quels thèmes la page gère, pour qu'il dessine ses
+     propres éléments (champs de saisie, cases à cocher, barres de défilement)
+     dans le même thème. Sans cela ils restaient clairs en mode sombre. */
+  color-scheme: light dark;
   color: var(--color-text);
   background: var(--color-bg-page);
   font-family:
@@ -43,6 +60,10 @@
   :root {
     --color-text: #e7ece2;
     --color-text-faint: #9aa693;
+    --color-text-muted: #b4bfad;
+    --color-danger-text: #f0958a;
+    --color-warning-text: #e8a57c;
+    --color-success-text: #8fd3a5;
     --color-bg-page: #12160f;
     --color-bg-page-gradient-top: rgba(18, 22, 15, 0.95);
     --color-bg-page-gradient-bottom: rgba(15, 19, 12, 0.95);
@@ -54,6 +75,13 @@
     --color-brand-hover: #4a8f63;
     --color-brand-text: #6fbd8a;
     --color-danger-border: #7a3f38;
+  --color-alert-bg: #2a1c18;
+  --color-alert-bg-strong: #3a2420;
+  --color-pressed-bg: #262c21;
+  --color-button-border: #3a4433;
+  --color-soft-brand-bg: #1e2a1d;
+  --color-soft-brand-bg-hover: #26362a;
+  --color-soft-brand-border: #2f4a33;
   }
 }
 
@@ -62,8 +90,13 @@
    deux sens : permet de forcer le sombre sur un téléphone resté en clair, ou
    l'inverse. */
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --color-text: #e7ece2;
   --color-text-faint: #9aa693;
+  --color-text-muted: #b4bfad;
+  --color-danger-text: #f0958a;
+  --color-warning-text: #e8a57c;
+  --color-success-text: #8fd3a5;
   --color-bg-page: #12160f;
   --color-bg-page-gradient-top: rgba(18, 22, 15, 0.95);
   --color-bg-page-gradient-bottom: rgba(15, 19, 12, 0.95);
@@ -75,11 +108,23 @@
   --color-brand-hover: #4a8f63;
   --color-brand-text: #6fbd8a;
   --color-danger-border: #7a3f38;
+  --color-alert-bg: #2a1c18;
+  --color-alert-bg-strong: #3a2420;
+  --color-pressed-bg: #262c21;
+  --color-button-border: #3a4433;
+  --color-soft-brand-bg: #1e2a1d;
+  --color-soft-brand-bg-hover: #26362a;
+  --color-soft-brand-border: #2f4a33;
 }
 
 :root[data-theme='light'] {
+  color-scheme: light;
   --color-text: #172018;
   --color-text-faint: #66725f;
+  --color-text-muted: #4c5648;
+  --color-danger-text: #9f2f25;
+  --color-warning-text: #8f3a1c;
+  --color-success-text: #2c6e3f;
   --color-bg-page: #f7f7f2;
   --color-bg-page-gradient-top: rgba(247, 247, 242, 0.95);
   --color-bg-page-gradient-bottom: rgba(239, 242, 236, 0.95);
@@ -91,6 +136,13 @@
   --color-brand-hover: #1a3f2a;
   --color-brand-text: #2d5a3d;
   --color-danger-border: #e0b9b4;
+  --color-alert-bg: #fff7f4;
+  --color-alert-bg-strong: #fbe9e7;
+  --color-pressed-bg: #f5f5f2;
+  --color-button-border: #bdc8b7;
+  --color-soft-brand-bg: #eef6ec;
+  --color-soft-brand-bg-hover: #e3f0de;
+  --color-soft-brand-border: #cfe3c8;
 }
 
 * {
@@ -164,13 +216,32 @@ a {
 
 .appTagline {
   margin: 2px 0 0;
-  color: #53624f;
+  color: var(--color-text-faint);
   font-size: 0.82rem;
   line-height: 1.3;
 }
 
+/* Hors accueil : une seule ligne basse, le titre reste un repère. */
+.appHeaderCompact {
+  padding: 8px 16px;
+}
+
+.appHeaderCompact .appLogo {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.appHeaderCompact h1 {
+  font-size: 1.05rem;
+}
+
+.appHeaderCompact .appHelpButton {
+  top: 8px;
+}
+
 @media (min-width: 560px) {
-  .appHeader {
+  .appHeader:not(.appHeaderCompact) {
     padding: 20px 20px 18px;
   }
 
@@ -204,9 +275,9 @@ a {
   display: grid;
   gap: 14px;
   padding: 20px;
-  border: 1px solid #d8c3c3;
+  border: 1px solid var(--color-danger-border);
   border-radius: 12px;
-  background: #fdf6f6;
+  background: var(--color-alert-bg);
 }
 
 .errorBoundary h2 {
@@ -251,7 +322,7 @@ a {
 .lead {
   max-width: 62ch;
   margin: 12px auto 0;
-  color: #4c5648;
+  color: var(--color-text-muted);
   font-size: 1rem;
   line-height: 1.55;
 }
@@ -326,7 +397,7 @@ a {
 .productCard p,
 .settingsPanel p {
   margin: 6px 0 0;
-  color: #5d6858;
+  color: var(--color-text-muted);
 }
 
 .productCard dl {
@@ -378,7 +449,7 @@ a {
 
 .savingsHeroAmount {
   margin: 2px 0 0;
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   font-size: 2.6rem;
   font-weight: 800;
   line-height: 1;
@@ -454,7 +525,7 @@ a {
 
 .thresholdControl span {
   font-size: 0.9rem;
-  color: #53624f;
+  color: var(--color-text-faint);
   display: block;
 }
 
@@ -518,7 +589,7 @@ a {
 }
 
 .comparisonDecisionWarning {
-  background: #fff7f4;
+  background: var(--color-alert-bg);
   border-color: var(--color-danger-border);
 }
 
@@ -529,7 +600,7 @@ a {
   display: grid;
   gap: 8px;
   padding: 8px 10px;
-  background: #fff7f4;
+  background: var(--color-alert-bg);
   border: 1px solid var(--color-danger-border);
   border-radius: 6px;
 }
@@ -550,7 +621,7 @@ a {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #2f3a2a;
+  color: var(--color-text);
 }
 
 .coverageBreakdown {
@@ -649,17 +720,17 @@ a {
 }
 
 .coverageBreakdownStatus--priced {
-  color: #2f3a2a;
+  color: var(--color-text);
 }
 
 .coverageBreakdownStatus--requiresValidation {
-  color: #8f3a1c;
+  color: var(--color-warning-text);
   font-size: 0.9rem;
 }
 
 .coverageBreakdownStatus--unavailable,
 .coverageBreakdownStatus--notFound {
-  color: #8a9082;
+  color: var(--color-text-faint);
   font-weight: 400;
   font-style: italic;
   font-size: 0.9rem;
@@ -742,7 +813,41 @@ a {
 .warningList {
   margin: 0;
   padding-left: 20px;
-  color: #8f3a1c;
+  /* Token (16/11) : le brun #8f3a1c en dur était presque illisible en thème sombre. */
+  color: var(--color-warning-text);
+}
+
+/* « 6 × 2,24 € » sous le prix d'une ligne : rappelle que le total compte la quantité. */
+.comparisonDecisionQuantity {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+/* Formats différents (16/11) : affiché avant « Notre conseil » pour que
+   l'utilisateur voie ces lignes avant « Tout acheter chez… ». */
+.formatNoticesPanel {
+  border-left: 4px solid var(--color-warning-text);
+}
+
+.formatNoticeList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text);
+}
+
+/* Nom du produit, puis les formats sur la ligne suivante (lisible sur téléphone). */
+.formatNoticeList li {
+  display: grid;
+  gap: 2px;
+}
+
+.formatNoticeList li span {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 .alternateQuantityPicker {
@@ -753,7 +858,7 @@ a {
 .alternateQuantityPickerLabel {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #6b4a2f;
+  color: var(--color-warning-text);
 }
 
 /* Une carte par alternate (nom + ses 3 actions) au lieu d'un empilement flex
@@ -768,8 +873,8 @@ a {
   display: grid;
   gap: 6px;
   padding: 8px 10px;
-  background: #fff;
-  border: 1px solid #cfa98a;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
 }
 
@@ -777,16 +882,16 @@ a {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #6b4a2f;
+  color: var(--color-warning-text);
 }
 
 .alternateQuantityButton {
   min-height: 32px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid #cfa98a;
-  background: #fff;
-  color: #6b4a2f;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-warning-text);
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
@@ -794,7 +899,7 @@ a {
 
 .alternateQuantityButton:hover,
 .alternateQuantityButton:focus-visible {
-  background: #fdf1e6;
+  background: var(--color-surface-muted);
 }
 
 /* Réglages secondaires d'une ligne à valider (magasin forcé, annuler un
@@ -890,7 +995,7 @@ a {
   gap: 10px;
   align-items: center;
   padding: 12px;
-  background: #fff7f4;
+  background: var(--color-alert-bg);
   border: 1px solid var(--color-danger-border);
   border-radius: 8px;
 }
@@ -914,7 +1019,7 @@ a {
 .productForm label {
   display: grid;
   gap: 8px;
-  color: #2d3a2a;
+  color: var(--color-text);
   font-weight: 700;
   font-size: 0.95rem;
 }
@@ -932,7 +1037,7 @@ a {
 }
 
 .productForm small {
-  color: #9f2f25;
+  color: var(--color-danger-text);
 }
 
 .checkboxLabel {
@@ -1019,7 +1124,7 @@ a {
   font-size: 1.1rem;
   font-weight: 800;
   line-height: 1;
-  color: #9f2f25;
+  color: var(--color-danger-text);
   background: var(--color-surface);
   border: 1px solid var(--color-danger-border);
   border-radius: 8px;
@@ -1027,13 +1132,13 @@ a {
 }
 
 .rejectStoreButton:active {
-  background: #fbe9e7;
+  background: var(--color-alert-bg-strong);
 }
 
 .primaryButton {
   min-height: 48px;
   padding: 12px 20px;
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   font: inherit;
   font-weight: 800;
   font-size: 1rem;
@@ -1057,7 +1162,7 @@ a {
   font-weight: 800;
   font-size: 1rem;
   background: var(--color-surface);
-  border: 1px solid #bdc8b7;
+  border: 1px solid var(--color-button-border);
   border-radius: 8px;
   cursor: pointer;
   text-align: center;
@@ -1065,16 +1170,16 @@ a {
 }
 
 .secondaryButton:active {
-  background: #f5f5f2;
+  background: var(--color-pressed-bg);
 }
 
 .dangerButton {
-  color: #9f2f25;
+  color: var(--color-danger-text);
   border-color: var(--color-danger-border);
 }
 
 .successButton {
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   background: var(--color-brand);
   border-color: var(--color-brand);
 }
@@ -1105,13 +1210,13 @@ a {
   font-size: 1rem;
   text-decoration: none;
   background: var(--color-surface);
-  border: 1px solid #bdc8b7;
+  border: 1px solid var(--color-button-border);
   border-radius: 8px;
   transition: background 0.2s;
 }
 
 .buttonLink:active {
-  background: #f5f5f2;
+  background: var(--color-pressed-bg);
 }
 
 .fileButton {
@@ -1156,7 +1261,7 @@ a {
   justify-content: center;
   font-size: 4rem;
   font-weight: 700;
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   background: rgba(45, 138, 82, 0.85);
   border-radius: 8px;
   animation: scanSuccessPop 0.35s ease-out;
@@ -1269,7 +1374,7 @@ a {
   content: '▸';
   margin-right: 10px;
   transition: transform 0.15s ease;
-  color: #6b7c66;
+  color: var(--color-text-faint);
 }
 
 .shoppingListPanel[open] summary::before {
@@ -1278,8 +1383,8 @@ a {
 
 .shoppingListPanel summary:hover,
 .shoppingListPanel summary:focus-visible {
-  background: #f1f5ec;
-  border-color: #c7d3c0;
+  background: var(--color-soft-brand-bg);
+  border-color: var(--color-soft-brand-border);
 }
 
 .shoppingListPanel[open] summary {
@@ -1296,20 +1401,20 @@ a {
 }
 
 .shoppingListPanelFavorites summary {
-  background: #eef6ec;
-  border-color: #cfe3c8;
+  background: var(--color-soft-brand-bg);
+  border-color: var(--color-soft-brand-border);
 }
 
 .shoppingListPanelFavorites summary:hover,
 .shoppingListPanelFavorites summary:focus-visible {
-  background: #e3f0de;
+  background: var(--color-soft-brand-bg-hover);
 }
 
 .countBadge {
   min-width: 24px;
   padding: 2px 8px;
   background: var(--color-brand);
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 700;
@@ -1348,24 +1453,24 @@ a {
 
 .panelText {
   margin: 0;
-  color: #4c5648;
+  color: var(--color-text-muted);
 }
 
 .panelTextDanger {
-  color: #9f2f25;
+  color: var(--color-danger-text);
 }
 
 .panelTextWarning {
-  color: #8f3a1c;
+  color: var(--color-warning-text);
 }
 
 .panelTextSuccess {
-  color: #2c6e3f;
+  color: var(--color-success-text);
   font-weight: 600;
 }
 
 .panelTextMuted {
-  color: #7b8574;
+  color: var(--color-text-faint);
   font-size: 0.85rem;
 }
 
@@ -1408,7 +1513,7 @@ a {
 }
 
 .navLinkActive {
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   background: var(--color-brand);
 }
 
@@ -1506,7 +1611,7 @@ a {
 .quickAddField {
   display: grid;
   gap: 8px;
-  color: #2d3a2a;
+  color: var(--color-text);
   font-weight: 700;
   font-size: 0.95rem;
 }
@@ -1537,7 +1642,7 @@ a {
 }
 
 .quickAddResults small {
-  color: #5d6858;
+  color: var(--color-text-muted);
   font-weight: 400;
 }
 
@@ -1617,7 +1722,7 @@ a {
   place-items: center;
   width: 28px;
   height: 28px;
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   font-weight: 800;
   font-size: 0.9rem;
   background: var(--color-brand);
@@ -1648,7 +1753,7 @@ a {
   min-height: 44px;
   margin-top: 10px;
   padding: 11px 16px;
-  color: var(--color-surface);
+  color: var(--color-on-brand);
   font-weight: 700;
   font-size: 0.9rem;
   text-decoration: none;
@@ -1677,4 +1782,50 @@ a {
   font-size: 0.8rem;
   line-height: 1.4;
   text-align: center;
+}
+
+/* Guide de démarrage de la page d'accueil (HomePage) : réutilise les étapes
+   de la fenêtre de bienvenue. */
+a.primaryButton,
+a.welcomeStepAction {
+  text-decoration: none;
+}
+
+a.primaryButton {
+  display: inline-grid;
+  place-items: center;
+}
+
+.guideStepLink {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 0;
+  color: var(--color-brand-text);
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+/* La barre de navigation est collée en haut : sans cette marge, le lien
+   « Choisir mes magasins » amenait le titre du bloc sous la barre. */
+.guideAnchor {
+  scroll-margin-top: 76px;
+}
+
+/* Bloc « Mes magasins » : l'adresse du site est repliée, la recherche par
+   ville est le chemin principal. */
+.storeUrlDetails summary {
+  padding: 8px 0;
+  color: var(--color-brand-text);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.storeSearchTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.storeSearchNote {
+  font-size: 0.8rem;
 }

@@ -30,8 +30,8 @@ import { isVerboseDiagnosticsEnabled } from './verboseDiagnostics';
 // vrai. Voir extension/shared/custom-origins.js pour ce que recouvre cette
 // seconde phrase.
 export const EXTENSION_UNAVAILABLE_MESSAGE =
-  'Le connecteur Firefox ne répond pas. Ouvrez « Aide » en haut de l’écran pour l’installer, ' +
-  'puis rechargez cette page. (Si vous hébergez cette application vous-même, autorisez plutôt son adresse dans les réglages du connecteur.)';
+  'Le connecteur Firefox ne répond pas. Ouvre « Aide » en haut de l’écran pour l’installer, ' +
+  'puis recharge cette page. (Si tu héberges cette application toi-même, autorise plutôt son adresse dans les réglages du connecteur.)';
 
 export type BridgeMessageEvent = {
   data: unknown;

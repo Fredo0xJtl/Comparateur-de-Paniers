@@ -10,6 +10,7 @@ import {
   type DriveListImportProgressEvent
 } from '../drive-bridge/extensionBridge';
 import { type StoreKey, type UserStore } from '../../types/domain';
+import { formatEuro } from '../../utils/formatMoney';
 import {
   applyListImport,
   loadProductsForMatching,
@@ -39,11 +40,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   COURSESU_LIST_EMPTY: 'Cette liste Courses U ne contient aucun produit.',
   LECLERC_LIST_EMPTY: "Aucun produit habituel trouvé sur ce compte Leclerc.",
   LECLERC_WRONG_PAGE:
-    "La page des produits habituels n'a pas pu être atteinte. Vérifie que le drive enregistré dans les réglages est le bon.",
+    "La page des produits habituels n'a pas pu être atteinte. Vérifie sur la page Accueil que le magasin choisi est le bon.",
   SITE_BLOCKED:
     "Le site a affiché une vérification anti-robot. Ouvre-le toi-même dans le navigateur, passe la vérification, puis relance l'import.",
   IMPORT_URL_UNKNOWN:
-    "Impossible de deviner l'adresse de la page de compte. Enregistre d'abord ton drive dans les réglages.",
+    "Impossible de deviner l'adresse de la page de compte. Choisis d'abord ton magasin sur la page Accueil.",
   IMPORT_PAGE_TIMEOUT: "La page n'a pas fini de charger à temps. Réessaie dans un moment.",
   IMPORT_CANCELLED: 'Import annulé.',
   IMPORT_NO_RESULT: "La page n'a rien renvoyé. Réessaie, et signale-le si ça se reproduit.",
@@ -99,7 +100,7 @@ export function ListImportPanel({ onImported }: { onImported?: () => void }) {
       );
 
       if (!response.accepted || !response.report) {
-        setError(response.reason ?? "L'extension n'a pas accepté la demande d'import.");
+        setError(response.reason ?? "Le connecteur n'a pas accepté la demande d'import.");
         return;
       }
       await handleReport(response.report, store);
@@ -109,7 +110,7 @@ export function ListImportPanel({ onImported }: { onImported?: () => void }) {
       setError(
         caught instanceof Error && caught.message.includes('expiré')
           ? "L'import a dépassé le temps imparti. Réessaie."
-          : "L'extension n'a pas répondu. Vérifie qu'elle est bien installée et active."
+          : "Le connecteur n'a pas répondu. Vérifie qu'il est bien installé et actif."
       );
     } finally {
       setBusyStoreKey(null);
@@ -189,13 +190,13 @@ export function ListImportPanel({ onImported }: { onImported?: () => void }) {
 
       <p className="panelText">
         Récupère les produits déjà enregistrés sur ton compte (produits habituels Leclerc, listes Courses U) au lieu de
-        les ressaisir. Tu dois être connecté au site dans ce navigateur ; l'extension lit la page, elle ne saisit jamais
+        les ressaisir. Tu dois être connecté au site dans ce navigateur ; le connecteur lit la page, il ne saisit jamais
         ton mot de passe.
       </p>
 
       {stores.length === 0 && (
         <p className="panelText panelTextDanger">
-          Aucun magasin enregistré. Ajoute d'abord ton drive dans les réglages.
+          Aucun magasin choisi. Choisis d'abord ton magasin sur la page Accueil.
         </p>
       )}
 
@@ -304,9 +305,9 @@ export function ListImportPanel({ onImported }: { onImported?: () => void }) {
 }
 
 function describeItem(item: DriveImportedItemV1) {
-  const parts = [item.brand, item.priceEuro !== undefined ? `${item.priceEuro.toFixed(2)} €` : null];
+  const parts = [item.brand, item.priceEuro !== undefined ? formatEuro(item.priceEuro) : null];
   if (item.quantity && item.quantity > 1) parts.push(`×${item.quantity}`);
-  return parts.filter(Boolean).join(' · ') || 'Marque non renseignée';
+  return parts.filter(Boolean).join(' · ') || '';
 }
 
 function describeProgress(event: DriveListImportProgressEvent) {

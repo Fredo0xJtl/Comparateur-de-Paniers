@@ -1,5 +1,63 @@
 # Changelog
 
+## Connecteur 0.7.15 - Connexion au magasin et panier partiel
+
+- **Pas connecté au moment de remplir le panier** : le connecteur reste sur le site du magasin et ouvre son écran de connexion, au lieu de revenir à l'application. Il ne lit ni ne remplit jamais les identifiants : tu les saisis toi-même, puis tu reviens relancer le remplissage.
+- **Panier rempli en partie : le montant à vérifier est le bon.** Si des produits n'ont pas pu être ajoutés (indisponibles, introuvables), le message indique le montant que doit afficher le panier du site, celui des produits à ajouter soi-même, puis le total prévu.
+- Ciblage du bouton de connexion resserré après relecture : jamais de déconnexion, de création de compte, de connexion via un autre service, de lien vers un autre site ni de bouton d'un formulaire déjà affiché ; rien n'est cliqué si l'état de connexion est incertain.
+
+## Application - Formats différents et usage sur téléphone
+
+- **Les produits dont le format diffère de la liste sont signalés avant le conseil.** Exemple : 1 L demandé, 2 × 1,5 L trouvé. Un encadré « N produits n’ont pas le même format partout » s'affiche avant « Notre conseil » et indique, pour chaque produit, le format de ta liste et celui de chaque magasin. La ligne concernée porte aussi un avertissement. Le total compte toujours le prix du paquet réellement vendu ; rien n'est bloqué, car un autre format peut être voulu.
+- Quand une fiche ne donne pas son format, il est lu dans son nom, pour l’avertissement uniquement (jamais enregistré ni utilisé dans le contrôle des prix) (« 2x1,5L », « 2 bouteilles de 1l »).
+- La quantité achetée s'affiche sous le prix d'une ligne (« 6 × 2,24 € »).
+- Les volumes d'un litre ou plus s'écrivent en litres (« 3 L » au lieu de « 3000 ml »).
+- **En-tête réduit à une ligne** hors de l'accueil : sur téléphone, il occupait environ un quart de l'écran à chaque page.
+- **Confirmation avant de supprimer un produit** (sa fiche, ses prix et sa ligne de liste sont effacés) et avant « Nouvelle liste ».
+- **Thème sombre plus lisible** : texte blanc sur les boutons verts, couleurs des avertissements et des encadrés adaptées.
+- Pluriels corrigés sur la page Comparer (« 1 produit », « 3 produits » au lieu de « produit(s) »).
+- Les messages « aucun magasin » renvoient vers la page Accueil, où se choisissent les magasins.
+- Après une actualisation réussie, plus de mention « 0 produit non relu ».
+- Deux avertissements de l'analyse de code (ESLint) corrigés dans le scanner et le choix des magasins, sans changement de comportement.
+
+## Connecteur 0.7.11 - Recherche de prix plus sûre et plus rapide
+
+- **Un produit pouvait recevoir le nom et le prix du produit précédent chez Leclerc.** Quand le site tardait à répondre, la fiche était lue avant d'être affichée : c'est la page encore à l'écran qui était relue, et son prix enregistré avec une confiance de 100 %. Mesuré sur téléphone le 15/11 (2 produits sur 12 à chaque comparatif). Le connecteur attend désormais que la page précédente soit réellement quittée ; la même garde protège l'ajout au panier, et elle est étendue à Hyper U.
+- L'attente fixe de 0,6 s avant chaque lecture de fiche Leclerc est remplacée par un sondage rapide.
+- **Hyper U : les fiches déjà mémorisées sont lues sans être affichées.** Le connecteur demande la page au site depuis l'onglet du magasin et y lit le prix, au lieu de faire défiler chaque fiche à l'écran. Le prix n'est accepté que s'il vient du bloc prix de la bonne fiche ; dans tous les autres cas (page différente, produit indisponible, erreur du site), le connecteur revient à l'ancienne méthode. Vérifié sur téléphone le 16/11 : 28 prix sur 28 identiques à l'ancienne méthode.
+- Hyper U : la pause entre deux produits suit le même rythme que chez Leclerc (courte le plus souvent, longue de temps en temps).
+- **Leclerc, Firefox mis en arrière-plan pendant la recherche.** La recherche Leclerc ne fonctionne que si la page est visible. Un produit qui n'était pas trouvé pour cette raison n'est plus mémorisé comme « introuvable » : le comparatif signale « page du magasin cachée ».
+- **Hyper U : plus de prix d'un produit de remplacement.** Le site sert parfois une fiche « produit indisponible » sans bloc prix, avec un autre article proposé à la place ; le connecteur lisait alors le prix de cet autre article. Il refuse désormais ce prix et laisse le produit sans prix.
+- Durée mesurée d'un comparatif (16 produits, 2 magasins, fiches déjà mémorisées) : 39 à 45 s, contre 57 s avant. Cette méthode n'est pas applicable à Leclerc, dont la protection anti-robot refuse ce type de demande.
+
+## Application - Parcours simplifié et retour dans l'application
+
+- **Page Comparer repensée pour un premier usage.** Un seul bouton « Chercher les prix » tant qu'aucun prix n'a été lu ; ensuite les totaux, un conseil en langage simple et un bouton « Tout acheter chez… ». Les réglages par produit et les options avancées sont repliés.
+- **L'économie affichée est celle par rapport au magasin unique le moins cher**, et le bandeau « Économie possible » n'apparaît que s'il y a réellement un gain. Quand aucun magasin n'a tous les produits, la carte l'explique au lieu d'afficher un 0 € muet.
+- **Retour après des courses déjà faites.** Si un panier a été préparé avec la liste en cours, les pages Liste et Comparer proposent « Commencer une nouvelle liste » ; les produits et les favoris sont conservés.
+- **Prix périmés.** Quand la majorité des prix a dépassé l'âge maximal, un seul message invite à les actualiser, à la place d'une erreur par produit.
+- **Plus aucun prix d'exemple** n'est déposé dans la base d'un nouvel utilisateur.
+- Les montants s'écrivent partout au format français (« 12,05 € »), et « extension » devient « connecteur » dans tous les textes.
+- Lecture des lots écrits à l'envers (« 2 L x 6 », « pack de 6 »), sans confondre un nombre de lavages avec un lot.
+- Un produit sans prix n'est plus compté parmi les « prix sûrs ». Une adresse inconnue ramène à l'accueil.
+- Dépendances mises à jour (React 19.3, Dexie 4.4.7, React Router 7.18.5).
+
+## Entretien du code
+
+- La page Comparer (2 455 lignes dans un seul fichier) est découpée en six fichiers sous `src/pages/compare/`, sans changement de comportement.
+- Ajout d'ESLint (`npm run lint`), exécuté par la CI.
+- Retrait du code mort : module `extension/shared/store-binding.js` et quelques fonctions jamais appelées.
+
+## Extension Chromium 0.7.2
+
+- Ajoute un paquet local pour Chrome, Brave, Edge, Vivaldi et les navigateurs Chromium compatibles Manifest V3 : `npm run extension:build:chromium` produit `dist/extension-chromium`, à charger en mode développeur.
+- Sépare correctement les contextes de fond : service worker MV3 pour Chromium, script de fond pour Firefox. Les permissions, le pont PWA et les origines autorisées restent communs aux deux paquets.
+
+## Architecture - Version publique et développement local
+
+- Retire l'ancienne synchronisation multi-appareils et son serveur privé. Les données restent dans le navigateur ; l'export/import JSON demeure disponible pour les sauvegarder ou les transférer volontairement.
+- Retire les scripts et instructions de déploiement propres à l'ancien hébergement personnel. GitHub Pages reste l'hébergement public et Vite fournit l'environnement de développement local sur le PC.
+
 ## Application - Page Comparer
 
 - **Retire le compte rendu trompeur affiché sous « Mettre à jour maintenant ».** Il annonçait invariablement « 0 prix mis à jour, N non disponible(s) » dès que la liste contenait de vrais produits, ce qui se lisait comme une panne sur l'écran même où s'affichent les économies. La cause : cette vérification ne consulte pas les magasins, elle relit des prix de démonstration figés dans le code, où aucun produit rapporté par le connecteur ne figure — le résultat ne pouvait donc jamais être autre chose que zéro. Le bouton reste, mais devient « Appliquer ce seuil » : il enregistre la valeur saisie et le confirme à l'écran, sans plus rien déclencher en coulisse. Le classement, lui, se recalculait déjà à chaque frappe. Ce bouton garde son utilité sur téléphone, où la confirmation « ✓ Enregistré » n'apparaissait jamais : elle dépendait de la sortie du champ, qui n'a pas lieu tant que le clavier virtuel reste ouvert. Les vraies erreurs restent signalées, et le seul rafraîchissement qui interroge les magasins demeure « Actualiser les prix Drive ».

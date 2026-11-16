@@ -1,5 +1,5 @@
-import { db } from '../../db/db';
-import { type Product, type ShoppingList, type ShoppingListItem, type StoreKey } from '../../types/domain';
+import { db, requestPersistentStorage } from '../../db/db';
+import { type Product, type ShoppingList, type ShoppingListItem, type StoreKey, type ValidatedBasket } from '../../types/domain';
 
 export type ShoppingListRow = {
   item: ShoppingListItem;
@@ -13,23 +13,30 @@ export type ActiveShoppingList = {
 
 const ACTIVE_LIST_NAME = 'Liste active';
 
-export async function getOrCreateActiveShoppingList() {
-  const existing = await db.shoppingLists.where('status').equals('draft').first();
-  if (existing) {
-    return existing;
-  }
+// Lecture puis écriture dans UNE transaction (opération « tout ou rien ») :
+// sans elle, deux appels simultanés (double-clic, double rendu de React en
+// développement) voyaient chacun « aucune liste » et en créaient deux, dont
+// une seule restait visible. Appelée depuis une autre transaction, celle-ci
+// s'y rattache (comportement normal de Dexie).
+export function getOrCreateActiveShoppingList(): Promise<ShoppingList> {
+  return db.transaction('rw', db.shoppingLists, async () => {
+    const existing = await db.shoppingLists.where('status').equals('draft').first();
+    if (existing) {
+      return existing;
+    }
 
-  const now = new Date().toISOString();
-  const list: ShoppingList = {
-    id: createId('list'),
-    name: ACTIVE_LIST_NAME,
-    status: 'draft',
-    createdAt: now,
-    updatedAt: now
-  };
+    const now = new Date().toISOString();
+    const list: ShoppingList = {
+      id: createId('list'),
+      name: ACTIVE_LIST_NAME,
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now
+    };
 
-  await db.shoppingLists.add(list);
-  return list;
+    await db.shoppingLists.add(list);
+    return list;
+  });
 }
 
 export async function getActiveShoppingListWithItems(): Promise<ActiveShoppingList> {
@@ -52,33 +59,44 @@ export async function getActiveShoppingListWithItems(): Promise<ActiveShoppingLi
 }
 
 export async function addProductToActiveList(productId: string) {
-  const list = await getOrCreateActiveShoppingList();
-  const existing = await db.shoppingListItems
-    .where('[shoppingListId+productId]')
-    .equals([list.id, productId])
-    .first();
+  // Première vraie donnée saisie : bon moment pour demander au navigateur de
+  // conserver la base. Sans attendre la réponse, et sans effet si refusé.
+  void requestPersistentStorage();
 
-  if (existing) {
-    await db.shoppingListItems.update(existing.id, {
-      wantedQuantity: existing.wantedQuantity + 1,
-      updatedAt: new Date().toISOString()
-    });
+  // Même raison que ci-dessus : sans transaction, deux ajouts simultanés du
+  // même produit créaient deux lignes au lieu d'une ligne en quantité 2.
+  await db.transaction('rw', db.shoppingLists, db.shoppingListItems, async () => {
+    const list = await getOrCreateActiveShoppingList();
+    const existing = await db.shoppingListItems
+      .where('[shoppingListId+productId]')
+      .equals([list.id, productId])
+      .first();
+
+    if (existing) {
+      await db.shoppingListItems.update(existing.id, {
+        wantedQuantity: existing.wantedQuantity + 1,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      await db.shoppingListItems.add({
+        id: createId('item'),
+        shoppingListId: list.id,
+        productId,
+        wantedQuantity: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
     await touchList(list.id);
-    return;
-  }
-
-  await db.shoppingListItems.add({
-    id: createId('item'),
-    shoppingListId: list.id,
-    productId,
-    wantedQuantity: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
   });
-  await touchList(list.id);
 }
 
 export async function updateShoppingListItemQuantity(itemId: string, wantedQuantity: number) {
+  // Une valeur illisible (NaN) ne doit jamais être enregistrée : on ne
+  // change rien plutôt que d'écrire une quantité invalide.
+  if (!Number.isFinite(wantedQuantity)) {
+    return;
+  }
   const safeQuantity = Math.max(1, Math.trunc(wantedQuantity));
   const item = await db.shoppingListItems.get(itemId);
   if (!item) {
@@ -192,4 +210,12 @@ function createId(prefix: string) {
   }
 
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// Dernier panier préparé depuis la création de la liste active, s'il existe :
+// signe que cette liste a déjà servi (voir ListAlreadyUsedNotice).
+export async function getLastBasketOfActiveList(): Promise<ValidatedBasket | null> {
+  const list = await getOrCreateActiveShoppingList();
+  const basket = await db.validatedBaskets.orderBy('validatedAt').reverse().first();
+  return basket && basket.validatedAt >= list.createdAt ? basket : null;
 }

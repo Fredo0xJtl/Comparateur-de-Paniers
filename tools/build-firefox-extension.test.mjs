@@ -85,7 +85,7 @@ describe('configureBridgeOrigins', () => {
 describe('configureBridgeOrigins avec explicitOnly', () => {
   it('ne garde que les origines explicites, sans localhost ni IP LAN du poste', () => {
     const previous = process.env.DRIVE_DEV_ORIGINS;
-    process.env.DRIVE_DEV_ORIGINS = 'https://raspberrypi.local:8443';
+    process.env.DRIVE_DEV_ORIGINS = 'https://devbox.local:8443';
     try {
       const configured = configureBridgeOrigins(manifest, {
         dev: true,
@@ -100,12 +100,12 @@ describe('configureBridgeOrigins avec explicitOnly', () => {
         explicitOnly: true
       });
 
-      expect(configured.host_permissions).toEqual(expect.arrayContaining(['https://raspberrypi.local/*']));
+      expect(configured.host_permissions).toEqual(expect.arrayContaining(['https://devbox.local/*']));
       expect(configured.host_permissions).not.toContain('http://localhost/*');
       expect(configured.host_permissions).not.toContain('https://192.168.99.18/*');
       expect(configured.content_scripts[0].matches).not.toContain('http://localhost/*');
       expect(configured.content_scripts[0].matches).not.toContain('https://192.168.99.18/*');
-      expect(patterns).toContain('https://raspberrypi.local:8443/*');
+      expect(patterns).toContain('https://devbox.local:8443/*');
       expect(patterns).not.toContain('http://localhost:8443/*');
       expect(patterns).not.toContain('https://192.168.99.18:8443/*');
     } finally {

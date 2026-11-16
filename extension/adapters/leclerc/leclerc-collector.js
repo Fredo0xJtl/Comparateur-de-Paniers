@@ -456,6 +456,10 @@ export async function collectLeclercStore({
       let fallbackBest = null;
       let fallbackStage = null;
       let lastSearchDiag = null;
+      // Un étage suivant (nom simplifié, nom seul, marque seule) a refusé de
+      // chercher parce que la page était cachée : sa grille vide ne prouve
+      // rien, même si la page est revenue à l'écran avant l'inspection finale.
+      let searchSawHiddenPage = false;
       let winningCandidates = [];
       // Cumul de TOUS les candidats vus à travers toute la cascade (name →
       // simplified_name → name_only → brand_only), contrairement à
@@ -608,6 +612,7 @@ export async function collectLeclercStore({
             ],
             signal
           );
+          if (retrySearch?.code === 'STORE_TAB_HIDDEN') searchSawHiddenPage = true;
           if (retrySearch?.started) {
             rememberQuery(simplifiedName, simplifiedBrand);
             const { candidates: retryCandidatesRaw, routeVerified: retryRouteVerified, diag: retryDiag } = await waitForProductCandidates({
@@ -696,6 +701,7 @@ export async function collectLeclercStore({
             [{ ...product, name: nameOnlyText, brand: '' }],
             signal
           );
+          if (nameOnlySearch?.code === 'STORE_TAB_HIDDEN') searchSawHiddenPage = true;
           if (nameOnlySearch?.started) {
             rememberQuery(nameOnlyText, '');
             const { candidates: nameOnlyCandidatesRaw, routeVerified: nameOnlyRouteVerified, diag: nameOnlyDiag } = await waitForProductCandidates({
@@ -754,6 +760,7 @@ export async function collectLeclercStore({
           [{ ...product, name: brandOnlyText, brand: '' }],
           signal
         );
+        if (brandOnlySearch?.code === 'STORE_TAB_HIDDEN') searchSawHiddenPage = true;
         if (brandOnlySearch?.started) {
           const { candidates: brandOnlyCandidatesRaw, routeVerified: brandOnlyRouteVerified, diag: brandOnlyDiag } = await waitForProductCandidates({
             scripting,
@@ -834,10 +841,14 @@ export async function collectLeclercStore({
           ...new Map(allSeenCandidates.map((candidate) => [candidate?.productUrl, candidate])).values()
         ];
         const nearMisses = findLeclercNearMissCandidates(product, dedupedSeenCandidates);
+        // La page a pu être cachée PENDANT la recherche (l'utilisateur change
+        // d'application en cours de route) : « rien trouvé » ne prouve alors
+        // rien, et ne doit pas être mémorisé comme une absence du rayon.
+        const hiddenDuringSearch = details?.pageHidden === true || searchSawHiddenPage;
         errors.push({
           storeKey: store.storeKey,
           productId: product.productId,
-          code: 'PRODUCT_NOT_FOUND',
+          code: hiddenDuringSearch ? 'STORE_TAB_HIDDEN' : 'PRODUCT_NOT_FOUND',
           details: {
             ...details,
             searchDiag: lastSearchDiag,
@@ -1412,7 +1423,22 @@ export async function addToCartLeclercStore({
   // franchement "déconnecté".
   const session = await runPageAction(scripting, tabId, readLeclercSessionStateOnPage, []);
   if (session?.signedIn !== true) {
-    return failed(store, 'CART_LOGIN_REQUIRED', { evidence: session?.evidence ?? null }, true);
+    // Non bloquant : si l'écran de connexion ne s'ouvre pas, l'onglet du
+    // magasin reste quand même affiché et le message de l'application guide.
+    // Clic seulement si le site dit clairement « déconnecté » : sur un état
+    // indéterminé, l'utilisateur est peut-être connecté (relecture du 16/11).
+    let login = null;
+    try {
+      if (session?.signedIn === false) login = await runPageAction(scripting, tabId, openStoreLoginOnPage, []);
+    } catch {
+      login = null;
+    }
+    return failed(
+      store,
+      'CART_LOGIN_REQUIRED',
+      { evidence: session?.evidence ?? null, loginOpened: login?.opened === true },
+      true
+    );
   }
 
   // Mémorise la page de recherche/catalogue courante AVANT tout produit, pour
@@ -1688,13 +1714,27 @@ async function returnToLeclercSearchRoute({ scripting, tabId, signal, searchRout
 async function collectLeclercManualProduct({ scripting, tabs, tabId, signal, manualUrl }) {
   const navigation = await runPageAction(scripting, tabId, navigateToLeclercUrlOnPage, [manualUrl]);
   if (!navigation?.started) return { ok: false, code: 'MANUAL_URL_NAVIGATION_FAILED' };
-  await wait(600, signal);
+  const page = await readLeclercProductPageAfterNavigation({ scripting, tabId, signal });
+  return page.ok ? page : { ok: false, code: page.code };
+}
 
-  // Même budget de relecture que tryAddToCartLeclercViaProductUrl : une fiche
-  // .aspx est un vrai rechargement complet, plus lent qu'un changement de
-  // route SPA, et DataDome y ajoute un délai variable.
+// Attend que la fiche demandée soit réellement la page affichée, puis la lit.
+// Commun à la collecte de prix et à l'ajout au panier : les deux partent d'une
+// navigation directe et ne doivent JAMAIS lire la page qu'ils viennent de
+// quitter (voir le drapeau posé par navigateToLeclercUrlOnPage).
+//
+// Remplace une attente fixe de 600 ms suivie de relectures toutes les 500 ms :
+// trop courte quand le site tarde (lecture de l'ancienne page), inutilement
+// longue quand il répond vite. On sonde désormais toutes les 150 ms tant que
+// l'ancienne page est là.
+//
+// Budget de 15 s inchangé : une fiche .aspx est un vrai rechargement complet,
+// plus lent qu'un changement de route SPA, et DataDome y ajoute un délai
+// variable.
+async function readLeclercProductPageAfterNavigation({ scripting, tabId, signal }) {
   const deadline = Date.now() + 15_000;
   let page = null;
+  let newPageSeenAt = null;
   while (Date.now() < deadline) {
     if (signal.aborted) throw new Error('DRIVE_JOB_CANCELLED');
     try {
@@ -1702,16 +1742,18 @@ async function collectLeclercManualProduct({ scripting, tabs, tabId, signal, man
     } catch {
       page = null;
     }
-    if (page?.ok) break;
-    // Une page bloquée ou introuvable ne s'améliorera pas en attendant :
-    // ressortir tout de suite plutôt que de brûler 15 s (et l'appelant
-    // retombera sur la recherche normale).
-    if (page?.code === 'SITE_BLOCKED') return { ok: false, code: 'SITE_BLOCKED' };
-    if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND') return { ok: false, code: 'MANUAL_URL_PAGE_NOT_FOUND' };
-    await wait(500, signal);
+    // Une page bloquée ne s'améliorera pas en attendant.
+    if (page?.ok || page?.code === 'SITE_BLOCKED') return page;
+    const pending = !page || page.code === 'NAVIGATION_PENDING';
+    if (!pending && newPageSeenAt === null) newPageSeenAt = Date.now();
+    // « Fiche introuvable » n'est définitif qu'une fois la nouvelle page
+    // installée depuis un moment : juste après son arrivée, le titre du
+    // produit peut ne pas être encore rendu, et conclure trop tôt ferait
+    // passer pour morte une fiche choisie à la main.
+    if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND' && Date.now() - newPageSeenAt >= 1_200) return page;
+    await wait(pending ? 150 : 300, signal);
   }
-  if (!page?.ok) return { ok: false, code: page?.code ?? 'MANUAL_URL_PAGE_NOT_READY' };
-  return page;
+  return !page || page.code === 'NAVIGATION_PENDING' ? { ok: false, code: 'MANUAL_URL_PAGE_NOT_READY' } : page;
 }
 
 // Recouvrement entre le nom demandé (celui de la LISTE DE COURSES, qui porte
@@ -1743,29 +1785,15 @@ const KNOWN_URL_MIN_NAME_SCORE = 0.7;
 async function tryAddToCartLeclercViaProductUrl({ scripting, tabId, signal, item }) {
   const navigation = await runPageAction(scripting, tabId, navigateToLeclercUrlOnPage, [item.productUrl]);
   if (!navigation?.started) return { added: false, code: 'CART_DIRECT_URL_NAVIGATION_FAILED' };
-  await wait(600, signal);
 
-  // Même logique de relecture que collectLeclercStore : la fiche peut mettre
-  // un instant à hydrater après le chargement du document. Budget aligné sur
-  // celui de waitForProductCandidates (15s, cf. son commentaire sur le délai
-  // variable ajouté par le anti-bot DataDome) — cette navigation est en plus
-  // un VRAI rechargement de page complète (fiche .aspx classique), plus lourd
-  // qu'un simple changement de route SPA.
-  const deadline = Date.now() + 15_000;
-  let page = null;
-  while (Date.now() < deadline) {
-    if (signal.aborted) throw new Error('DRIVE_JOB_CANCELLED');
-    try {
-      page = await runPageAction(scripting, tabId, readLeclercProductPageOnPage, []);
-    } catch {
-      page = null;
-    }
-    if (page?.ok) break;
-    if (page?.code === 'SITE_BLOCKED') return { added: false, captcha: true };
-    if (page?.code === 'MANUAL_URL_PAGE_NOT_FOUND') return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_FOUND' };
-    await wait(500, signal);
-  }
-  if (!page?.ok) return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_READY' };
+  // Même attente et même lecture que la collecte de prix (voir
+  // readLeclercProductPageAfterNavigation) : ici l'enjeu est plus lourd
+  // encore, puisqu'une lecture de l'ancienne page précéderait un clic
+  // « Ajouter au panier ».
+  const page = await readLeclercProductPageAfterNavigation({ scripting, tabId, signal });
+  if (page.code === 'SITE_BLOCKED') return { added: false, captcha: true };
+  if (page.code === 'MANUAL_URL_PAGE_NOT_FOUND') return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_FOUND' };
+  if (!page.ok) return { added: false, code: 'CART_DIRECT_URL_PAGE_NOT_READY' };
 
   // Canari de structure AJOUTÉ (2026-08-28) : purement observationnel, il ne
   // change aucune décision. Si le prix a dû être lu par le palier de dernier
@@ -1821,6 +1849,18 @@ async function tryAddToCartLeclercViaProductUrl({ scripting, tabId, signal, item
 // de lecture de prix que readGenericLeclercProductOnPage (imbriquée dans
 // armLeclercFloatingPickButtonOnPage, injectée séparément).
 export function readLeclercProductPageOnPage() {
+  // Bug réel mesuré sur téléphone le 15/11 (deux comparatifs de suite) : la
+  // navigation vers la fiche n'avait pas encore abouti quand cette lecture
+  // partait, si bien qu'elle lisait la page ENCORE affichée — la fiche ou la
+  // liste de résultats du produit précédent. Deux produits validés à la main
+  // recevaient ainsi le nom et le prix d'un autre, avec une confiance de
+  // 100 %. navigateToLeclercUrlOnPage pose ce drapeau sur le document qu'il
+  // quitte : tant qu'il est là, rien de ce qui est affiché n'est la fiche
+  // demandée. Vérifié DANS la même injection que la lecture, pour qu'aucun
+  // changement de page ne puisse se glisser entre le contrôle et la lecture.
+  if (window.__dpsLeavingPage === true) {
+    return { ok: false, code: 'NAVIGATION_PENDING' };
+  }
   const text = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
   if (/captcha|v[ée]rifier que vous [êe]tes humain/i.test(text)) {
     return { ok: false, code: 'SITE_BLOCKED' };
@@ -2423,6 +2463,68 @@ export async function clickAddToCartOnLeclercProductPageOnPage(quantity) {
   return { added: true };
 }
 
+// Connexion requise (16/11, demande utilisateur) : au lieu de laisser une page
+// d'accueil quelconque, on ouvre l'écran de connexion DU SITE (clic sur son
+// propre bouton « Se connecter », ou navigation vers son lien de connexion de
+// même origine). L'utilisateur saisit lui-même ses identifiants : le connecteur
+// ne lit ni ne remplit jamais aucun champ. Autonome (injectée par executeScript).
+export function openStoreLoginOnPage() {
+  const isVisible = (element) => element.offsetParent !== null || element.getClientRects().length > 0;
+  const signalOf = (element) =>
+    `${element.textContent} ${element.getAttribute('aria-label') || ''} ${element.getAttribute('title') || ''}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  // Relecture du 16/11 : ciblage strict. Jamais de déconnexion, de création
+  // de compte, de connexion via un autre service, ni de bouton d'un formulaire
+  // déjà affiché (son clic enverrait des identifiants remplis par le navigateur).
+  const FORBIDDEN =
+    /d[ée]connex|d[ée]connect|logout|log-out|signout|sign-out|disconnect|cr[ée]er|inscri|register|google|facebook|apple|paypal/i;
+  const LOGIN_TEXT = /^(se connecter|me connecter|s'identifier|identifiez-vous|connexion)$/i;
+  const LOGIN_HREF = /connexion|login|identification|authentification|signin/i;
+  const decoded = (raw) => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  };
+  const sameOriginUrl = (element) => {
+    const raw = element.getAttribute('href');
+    if (!raw) return null;
+    try {
+      const url = new URL(raw, location.href);
+      return url.origin === location.origin ? url : null;
+    } catch {
+      return null;
+    }
+  };
+  const isSafe = (element) => {
+    if (element.closest('form')) return false;
+    if (FORBIDDEN.test(signalOf(element))) return false;
+    if (element.getAttribute('target') === '_blank') return false;
+    if (element.hasAttribute('href')) {
+      const url = sameOriginUrl(element);
+      if (!url || FORBIDDEN.test(decoded(url.pathname + url.search))) return false;
+    }
+    return true;
+  };
+  const controls = [...document.querySelectorAll('a, button, [role="button"]')];
+  const button = controls.find((element) => isVisible(element) && LOGIN_TEXT.test(signalOf(element)) && isSafe(element));
+  if (button) {
+    button.click();
+    return { opened: true, evidence: 'clic_bouton_connexion' };
+  }
+  const link = controls.find((element) => {
+    const url = sameOriginUrl(element);
+    return url !== null && LOGIN_HREF.test(decoded(url.pathname)) && isSafe(element);
+  });
+  if (link) {
+    location.assign(sameOriginUrl(link).href);
+    return { opened: true, evidence: 'lien_connexion' };
+  }
+  return { opened: false, evidence: null };
+}
+
 // Runs in the page world. Lecture seule du DOM, uniquement — ne cherche
 // jamais de champ mot de passe, ne remplit et ne clique jamais rien. Sert
 // uniquement à distinguer "le site refuse l'ajout parce que l'utilisateur
@@ -2969,7 +3071,6 @@ async function runPageAction(scripting, tabId, func, args) {
   const results = await executeScriptWithTimeout(scripting, { target: { tabId }, func, args });
   return results?.[0]?.result;
 }
-
 // Diagnostic réel (29/08, run après le correctif de sonde de survie) : un
 // SCRIPT_EXECUTION_TIMEOUT sur la soumission de recherche (startProductSearchOnPage)
 // a frappé 4 produits DIFFÉRENTS dans une même collecte, sans lien avec le
@@ -3835,6 +3936,22 @@ function navigateToLeclercUrlOnPage(targetUrl) {
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.leclercdrive.fr')) {
     return { started: false };
   }
+  // Marque CE document comme « en train d'être quitté » (16/11) : tant que le
+  // serveur n'a pas répondu, l'ancienne page reste affichée et lisible, et une
+  // lecture de fiche lancée trop tôt y relisait le produit PRÉCÉDENT (voir
+  // readLeclercProductPageOnPage). Le nouveau document repart d'un `window`
+  // neuf, donc sans ce drapeau. Le `pageshow` couvre le seul cas où l'ancien
+  // document redeviendrait la page courante (retour par l'historique).
+  // Exception : une adresse qui ne diffère de la page courante que par son
+  // ancre (#…) ne recharge rien. Marquer ce document le rendrait illisible
+  // jusqu'à l'expiration du délai.
+  const sameDocument = url.hash !== '' && url.href.split('#')[0] === location.href.split('#')[0];
+  if (!sameDocument) {
+    window.__dpsLeavingPage = true;
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) window.__dpsLeavingPage = false;
+    });
+  }
   setTimeout(() => location.assign(url.href), 0);
   return { started: true };
 }
@@ -3908,6 +4025,14 @@ async function inspectCatalogOnPage() {
 // "ok" matché par regex qui peut être un bandeau de cookies. Fusionné en un seul
 // chemin ci-dessous, qui reprend tous les correctifs acquis.
 export async function startProductSearchOnPage(product) {
+  // Page cachée (Firefox hors écran, écran éteint) : la grille de résultats
+  // de Leclerc ne remplit ses cartes que dans une page visible. Mesuré sur
+  // téléphone le 16/11 : la recherche y brûlait ≈ 58 s puis concluait
+  // PRODUCT_NOT_FOUND — mémorisé 3 jours par l'application, donc un produit
+  // en rayon sauté aux comparatifs suivants. Refus immédiat, sous un code que
+  // l'application ne mémorise pas. Les fiches mémorisées ne passent pas par
+  // ici : elles se lisent très bien page cachée.
+  if (document.visibilityState === 'hidden') return { started: false, code: 'STORE_TAB_HIDDEN' };
   // A third-party tag-manager/vendor script injects its own hidden input
   // (seen in the wild as id="vendor-search-handler") that also matches the
   // generic /recherch|search/i heuristic below — it was winning the .find()
@@ -4230,7 +4355,7 @@ export async function triggerLeclercLazyLoadOnPage(budgetMs = 2500) {
       if (!atBottom) {
         scrollTarget.scrollTop = Math.min(scrollTarget.scrollTop + step, scrollLimit);
       }
-      // eslint-disable-next-line no-await-in-loop
+       
       await new Promise((resolve) => setTimeout(resolve, 200));
       const currentVideCount = countVide();
       if (currentVideCount === 0) break;
@@ -4256,7 +4381,7 @@ export async function triggerLeclercLazyLoadOnPage(budgetMs = 2500) {
   for (const placeholder of placeholders) {
     if (Date.now() >= hardDeadline) break;
     placeholder.scrollIntoView({ block: 'center' });
-    // eslint-disable-next-line no-await-in-loop
+     
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (placeholders.length > 0 && Date.now() < hardDeadline) {
@@ -4649,7 +4774,7 @@ export function readProductCandidatesOnPage() {
       card.getAttribute('data-product-id') ||
       readVProduitId(card) ||
       card.querySelector('[class*="v-produit-"]') && readVProduitId(card.querySelector('[class*="v-produit-"]')) ||
-      href.match(/(?:produit|product)[\/-]([^/?#]+)/i)?.[1] ||
+      href.match(/(?:produit|product)[/-]([^/?#]+)/i)?.[1] ||
       undefined;
     // Sur les vignettes Angular, le parcmier <p> descriptif est le nom du
     // produit. D'autres <p> peuvent suivre (conditionnement, variante,
@@ -4909,6 +5034,9 @@ export function inspectLeclercResultsOnPage() {
   const virtualScrollViewportCount = document.querySelectorAll('cdk-virtual-scroll-viewport').length;
 
   return {
+    // Page cachée (Firefox hors écran) : la grille ne se remplit pas, « aucun
+    // résultat » ne prouve donc rien — voir STORE_TAB_HIDDEN.
+    pageHidden: document.visibilityState === 'hidden',
     pageTitle: document.title.slice(0, 200),
     bodyTextSnippet: text.replace(/\s+/g, ' ').trim().slice(0, 400),
     // Audit sécurité du 30/08 : un dump brut de document.body.innerHTML

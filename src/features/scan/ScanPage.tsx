@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listProducts } from '../../db/seed';
 import {
@@ -42,6 +42,7 @@ import {
   type OpenFoodFactsSuggestion
 } from './openFoodFactsClient';
 import { getSettings } from '../settings/settingsService';
+import { formatEuro } from '../../utils/formatMoney';
 import {
   getCachedProduct,
   setCachedProduct,
@@ -49,9 +50,6 @@ import {
   type CacheSource
 } from './productCacheService';
 
-function formatEuro(value: number) {
-  return `${value.toFixed(2).replace('.', ',')} €`;
-}
 
 type ScanStatus = 'idle' | 'unsupported' | 'camera' | 'error';
 // 'found' a existé ici (suggestion Open Food Facts en attente d'un clic de
@@ -262,6 +260,16 @@ export function ScanPage() {
     }
   }
 
+  // Appelés depuis le minuteur et le décodeur installés par l'effet ci-dessous :
+  // useEffectEvent leur donne toujours la version à jour des fonctions (état
+  // courant compris) sans relancer la caméra à chaque rendu.
+  const onDetectorTick = useEffectEvent((detector: ReturnType<typeof createBarcodeDetector>) => {
+    void scanVideoFrame(detector);
+  });
+  const onZxingDetected = useEffectEvent((barcode: string) => {
+    handleScanSuccess(barcode);
+  });
+
   useEffect(() => {
     if (scanStatus !== 'camera' || !videoRef.current || !streamRef.current) {
       return;
@@ -273,10 +281,10 @@ export function ScanPage() {
     if (detectorRef.current) {
       const detector = detectorRef.current;
       scanTimerRef.current = window.setInterval(() => {
-        void scanVideoFrame(detector);
+        onDetectorTick(detector);
       }, 700);
     } else {
-      zxingDecoderRef.current = createContinuousZxingDecoder(video, handleScanSuccess, {
+      zxingDecoderRef.current = createContinuousZxingDecoder(video, onZxingDetected, {
         brightness,
         contrast
       });
@@ -665,6 +673,11 @@ export function ScanPage() {
 
   return (
     <section className="pageStack scanPageLayout" aria-labelledby="scan-title">
+      <div className="pageTitle">
+        <h2 id="scan-title">Ajouter un produit</h2>
+        <p className="lead">Tape son nom ou scanne son code-barres : il part directement dans ta liste.</p>
+      </div>
+
       <div className="settingsPanel">
         <h3>Ajouter par son nom</h3>
         <label className="quickAddField">
@@ -762,13 +775,13 @@ export function ScanPage() {
           <div className="quickAddStores">
             <p className="panelText">
               {suggestions.length === 0
-                ? "Pas encore dans ta base. Cherche-le directement dans un magasin :"
+                ? "Produit pas encore connu. Cherche-le directement dans un magasin :"
                 : 'Aucun de ceux-ci ? Cherche dans un magasin :'}
             </p>
             {configuredStores.length === 0 ? (
               <p className="panelText">
-                Aucun magasin configuré pour l'instant — ajoute-en un dans les réglages pour
-                pouvoir chercher dans un catalogue.
+                Aucun magasin configuré pour l'instant : <Link to="/">choisis tes magasins sur la page Accueil</Link>{' '}
+                pour pouvoir chercher ce produit dans leurs rayons.
               </p>
             ) : (
               configuredStores.map((storeKey) => (
@@ -819,7 +832,7 @@ export function ScanPage() {
 
       <div className="settingsPanel">
         <button className="primaryButton" type="button" onClick={startScan} disabled={cameraBusy}>
-          Scanner un produit
+          Scanner un code-barres
         </button>
         {scanStatus === 'camera' && (
           <>
@@ -890,7 +903,7 @@ export function ScanPage() {
         }}
       >
         <label>
-          <span>Code-barres saisi à la main</span>
+          <span>Ou tape le code-barres (les chiffres sous les barres)</span>
           <input
             id="manual-barcode"
             name="barcode"
@@ -908,7 +921,7 @@ export function ScanPage() {
           )}
         </label>
         <button className="primaryButton" type="submit" disabled={barcodeBusy}>
-          Rechercher en local
+          Chercher ce code-barres
         </button>
       </form>
 
@@ -927,10 +940,10 @@ export function ScanPage() {
       )}
 
       <details className="scanInfoPanel">
-        <summary>ℹ️ À propos du scanning</summary>
+        <summary>ℹ️ Que devient le code-barres ?</summary>
         <div>
           <p className="lead">
-            Recherche d'abord dans ta base locale. Si le produit n'y est pas, seul le code-barres
+            L'application cherche d'abord dans les produits que tu as déjà ajoutés. Si le produit n'y est pas, seul le code-barres
             (rien d'autre) est envoyé à Open Food Facts, une base ouverte, pour proposer un nom.
           </p>
         </div>
@@ -944,7 +957,7 @@ export function ScanPage() {
       {foundProduct && (
         <article className="productCard">
           <h3>{foundProduct.name}</h3>
-          <p>{foundProduct.brand ?? 'Marque non renseignée'}</p>
+          {foundProduct.brand && <p>{foundProduct.brand}</p>}
           <p className="panelText">✓ Ajouté à la liste.</p>
           <div className="cardActions">
             <Link className="buttonLink" to="/liste">

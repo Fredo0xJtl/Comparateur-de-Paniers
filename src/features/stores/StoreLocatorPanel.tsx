@@ -20,10 +20,20 @@ const STORE_LABELS: Record<StoreKey, string> = {
   hyperu: 'Hyper U / Courses U'
 };
 
-export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServices> }) {
+export function StoreLocatorPanel({
+  services,
+  onStoresChange
+}: {
+  services?: Partial<LocatorServices>;
+  /** Prévient la page (guide de démarrage) quand la liste des magasins change. */
+  onStoresChange?: (stores: UserStore[]) => void;
+}) {
+  // Fonction stable (celle du parent ou celle par défaut) : l'effet de
+  // chargement ci-dessous en dépend, sans se relancer à chaque rendu.
+  const listSelectedStores = services?.listSelectedStores ?? defaultListSelectedStores;
   const locatorServices: LocatorServices = {
     findStores: services?.findStores ?? defaultFindStores,
-    listSelectedStores: services?.listSelectedStores ?? defaultListSelectedStores,
+    listSelectedStores,
     selectUserStore: services?.selectUserStore ?? defaultSelectUserStore,
     saveStoreDriveUrl: services?.saveStoreDriveUrl ?? defaultSaveStoreDriveUrl
   };
@@ -36,8 +46,7 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
 
   useEffect(() => {
     let ignore = false;
-    void locatorServices
-      .listSelectedStores()
+    void listSelectedStores()
       .then((stores) => {
         if (!ignore) {
           setSelectedStores(stores);
@@ -51,7 +60,13 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [listSelectedStores]);
+
+  useEffect(() => {
+    onStoresChange?.(selectedStores);
+    // Le rappel du parent change à chaque rendu : seule la liste compte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStores]);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,7 +80,7 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
       setMessage(
         nextResults.length === 0
           ? 'Aucun magasin correspondant trouvé. Essaie une ville voisine.'
-          : `${nextResults.length} magasin(s) trouvé(s).`
+          : nextResults.length > 1 ? `${nextResults.length} magasins trouvés.` : '1 magasin trouvé.'
       );
     } catch (error) {
       setStatus('error');
@@ -83,6 +98,11 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
       ]);
       setStatus('ready');
       setMessage(`${STORE_LABELS[selected.storeKey]} (${formatShortLocation(selected) || 'ville inconnue'}) enregistré.`);
+      // Le magasin est choisi : la liste de résultats n'a plus lieu d'être,
+      // et la recherche bascule sur l'enseigne qui reste à renseigner.
+      setResults([]);
+      setCity('');
+      setStoreKey(selected.storeKey === 'leclerc' ? 'hyperu' : 'leclerc');
     } catch {
       setStatus('error');
       setMessage("Impossible d'enregistrer ce magasin localement.");
@@ -142,7 +162,10 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
     <div className="settingsPanel storeLocatorPanel">
       <div>
         <h3>Mes magasins</h3>
-        <p>Choisis le point de vente qui servira de référence aux futures données de prix.</p>
+        <p>
+          Les prix changent d’un magasin à l’autre : indique le tien pour chaque enseigne, en le cherchant par
+          ville.
+        </p>
       </div>
 
       <div className="selectedStoreList" aria-label="Magasins sélectionnés">
@@ -153,13 +176,24 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
               <strong>{STORE_LABELS[storeKey]}</strong>
               {store ? (
                 <>
-                  <span>{formatStoreLocationLabel(store)}</span>
-                  <StoreDriveUrlField store={store} onSave={handleSaveDriveUrl} />
+                  <span>✓ {formatStoreLocationLabel(store)}</span>
+                  {/* Replié : l'adresse du site est un réglage de précision,
+                      pas une étape obligatoire. Affichée d'emblée, elle
+                      faisait croire qu'il fallait la remplir pour continuer. */}
+                  <details className="storeUrlDetails">
+                    <summary>
+                      {store.driveUrl ? 'Adresse du site enregistrée — modifier' : 'Prix plus fiables : préciser l’adresse du site'}
+                    </summary>
+                    <StoreDriveUrlField store={store} onSave={handleSaveDriveUrl} />
+                  </details>
                 </>
               ) : (
                 <>
-                  <span>Pas encore enregistré</span>
-                  <StoreDriveUrlFieldEmpty storeKey={storeKey} onSaveManualUrl={handleCreateManualStore} />
+                  <span>Pas encore choisi — cherche-le par ville ci-dessous.</span>
+                  <details className="storeUrlDetails">
+                    <summary>Magasin introuvable par ville ? Coller l’adresse de son site</summary>
+                    <StoreDriveUrlFieldEmpty storeKey={storeKey} onSaveManualUrl={handleCreateManualStore} />
+                  </details>
                 </>
               )}
             </div>
@@ -168,6 +202,7 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
       </div>
 
       <form className="productForm" onSubmit={(event) => void handleSearch(event)}>
+        <h4 className="storeSearchTitle">Chercher un magasin</h4>
         <label>
           <span>Enseigne</span>
           <select
@@ -183,6 +218,7 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
           <span>Ville</span>
           <input
             name="city"
+            placeholder="ex. Chartres"
             autoComplete="address-level2"
             maxLength={100}
             required
@@ -190,13 +226,12 @@ export function StoreLocatorPanel({ services }: { services?: Partial<LocatorServ
             onChange={(event) => setCity(event.currentTarget.value)}
           />
         </label>
-        <p className="panelText panelTextWarning">
-          Au clic sur « Rechercher », l'enseigne et la ville sont envoyées à OpenStreetMap. Aucun
-          autre renseignement n'est transmis.
-        </p>
         <button className="primaryButton" type="submit" disabled={status === 'loading'}>
           {status === 'loading' ? 'Recherche...' : 'Rechercher'}
         </button>
+        <p className="panelText storeSearchNote">
+          Seules l’enseigne et la ville sont envoyées à OpenStreetMap (annuaire libre) pour cette recherche.
+        </p>
       </form>
 
       {message && (
@@ -339,7 +374,7 @@ function StoreDriveUrlField({
   return (
     <form className="storeDriveUrlForm" onSubmit={(event) => void handleSubmit(event)}>
       <label>
-        <span>URL Drive du magasin (pour l'actualisation des prix)</span>
+        <span>Adresse du magasin sur le site du Drive</span>
         <input
           type="url"
           inputMode="url"
@@ -349,16 +384,15 @@ function StoreDriveUrlField({
         />
       </label>
       <p className="panelText panelTextWarning">
-        Ouvre ton magasin sur le site du Drive, puis copie l'adresse affichée dans la barre du
-        navigateur une fois le catalogue ouvert. Sans cette URL, l'actualisation utilise la page
-        d'accueil générique, moins fiable.
+        Ouvre ton magasin sur le site du Drive, puis copie l'adresse affichée en haut du navigateur une fois les
+        rayons affichés. Sans elle, l'application part de la page d'accueil du site, ce qui est moins fiable.
       </p>
       <button className="secondaryButton" type="submit" disabled={saving}>
-        {saving ? 'Enregistrement...' : 'Enregistrer l\'URL Drive'}
+        {saving ? 'Enregistrement...' : 'Enregistrer l\'adresse'}
       </button>
       {justSaved && (
         <p className="panelText" role="status">
-          ✓ URL enregistrée.
+          ✓ Adresse enregistrée.
         </p>
       )}
     </form>
@@ -404,7 +438,7 @@ function StoreDriveUrlFieldEmpty({
   return (
     <form className="storeDriveUrlForm" onSubmit={(event) => void handleSubmit(event)}>
       <label>
-        <span>URL Drive du magasin (pour l'actualisation des prix)</span>
+        <span>Adresse du magasin sur le site du Drive</span>
         <input
           type="url"
           inputMode="url"
@@ -414,15 +448,15 @@ function StoreDriveUrlFieldEmpty({
         />
       </label>
       <p className="panelText panelTextWarning">
-        Ouvre ton magasin sur le site du Drive, puis copie l'adresse affichée dans la barre du
-        navigateur une fois le catalogue ouvert.
+        Ouvre ton magasin sur le site du Drive, puis copie l'adresse affichée en haut du navigateur une fois les
+        rayons affichés.
       </p>
       <button className="secondaryButton" type="submit" disabled={saving || !value.trim()}>
-        {saving ? 'Enregistrement...' : 'Enregistrer l\'URL Drive'}
+        {saving ? 'Enregistrement...' : 'Enregistrer l\'adresse'}
       </button>
       {justSaved && (
         <p className="panelText" role="status">
-          ✓ URL enregistrée.
+          ✓ Adresse enregistrée.
         </p>
       )}
     </form>

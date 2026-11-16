@@ -3,7 +3,8 @@ import type { ComparisonDecision, StoreCoverage } from './comparisonEngine';
 export type TrustStatus = 'trusted' | 'attention' | 'blocked';
 export type TrustIssueCode =
   | 'requires_validation' | 'incomplete_coverage' | 'stale_price' | 'missing_price'
-  | 'price_mismatch' | 'unsupported_promotion' | 'different_format' | 'confirmed_absent_both';
+  | 'price_mismatch' | 'unsupported_promotion' | 'different_format' | 'confirmed_absent_both'
+  | 'format_differs_from_list';
 export type TrustIssueAction = 'refresh_prices' | 'validate_candidate' | 'confirm_format' | 'review';
 
 export type TrustIssue = {
@@ -33,7 +34,8 @@ const signalRules = {
   PRICE_MISMATCH: { code: 'price_mismatch', message: 'Le prix est incohérent avec le prix au litre ou au kilo.', action: 'review' },
   FORMAT_CONFIRMATION_REQUIRED: { code: 'different_format', message: 'Le format doit être confirmé.', action: 'confirm_format' },
   CONFIRMED_ABSENT_BOTH: { code: 'confirmed_absent_both', message: 'Produit absent des deux magasins : ligne exclue du calcul.', action: 'review' },
-  PROMOTION_NOT_OPTIMIZED: { code: 'unsupported_promotion', message: 'Promotion détectée mais non optimisée.', action: 'review' }
+  PROMOTION_NOT_OPTIMIZED: { code: 'unsupported_promotion', message: 'Promotion détectée mais non optimisée.', action: 'review' },
+  FORMAT_DIFFERS_FROM_LIST: { code: 'format_differs_from_list', message: 'Le paquet retenu n’a pas le format de ta liste : son prix est compté tel quel.', action: 'review' }
 } as const;
 
 export function assessComparisonTrust(input: {
@@ -64,7 +66,8 @@ export function assessComparisonTrust(input: {
     canAddToCart: blockingIssueCount === 0,
     summary: {
       itemCount: input.decisions.length,
-      trustedDecisionCount: input.decisions.filter((decision) => !decision.requiresValidation).length,
+      trustedDecisionCount: // Un produit introuvable n'a pas de « prix sûr » : il n'a pas de prix.
+      input.decisions.filter((decision) => !decision.requiresValidation && decision.price !== undefined).length,
       completeStoreCount: (['leclerc', 'hyperu'] as const).filter((key) => input.coverage[key].covered === input.coverage[key].total).length
     }
   };

@@ -3,12 +3,42 @@ import react from '@vitejs/plugin-react';
 // Import dynamique plus bas, pas ici : `vite-plugin-mkcert` charge undici dès
 // son `require`, qui référence le global `File` absent en Node < 20. Un
 // import statique casserait le chargement de ce fichier de config (donc
-// `vite build`) sur tout environnement dont le Node est trop ancien — ex. le
-// Raspberry Pi en Node 18, qui ne fait que le build de prod, jamais le dev
-// server.
+// `vite build`) sur tout environnement dont le Node est trop ancien.
+
+// CSP (Content Security Policy) : liste de ce que la page a le droit de
+// charger et de contacter. Seconde barrière si un script étranger parvenait à
+// s'injecter : il ne pourrait ni se charger depuis un autre site, ni envoyer
+// de données ailleurs que vers les deux services déclarés. GitHub Pages ne
+// permet pas d'en-têtes HTTP personnalisés, d'où une balise <meta>.
+// Uniquement au build : le serveur de développement de Vite injecte des
+// scripts en ligne (rechargement à chaud) que cette règle bloquerait.
+// `style-src 'unsafe-inline'` : React pose des attributs `style`.
+// Toute nouvelle adresse contactée par l'app doit être ajoutée à connect-src.
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' https://world.openfoodfacts.org https://nominatim.openstreetmap.org",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'"
+].join('; ');
+
+const cspPlugin: PluginOption = {
+  name: 'inject-csp',
+  apply: 'build',
+  transformIndexHtml: () => [
+    {
+      tag: 'meta',
+      attrs: { 'http-equiv': 'Content-Security-Policy', content: CONTENT_SECURITY_POLICY },
+      injectTo: 'head-prepend'
+    }
+  ]
+};
 
 export default defineConfig(async ({ command }) => {
-  const plugins: PluginOption[] = [react()];
+  const plugins: PluginOption[] = [react(), cspPlugin];
   if (command === 'serve') {
     // HTTPS local requis pour le scan caméra sur le LAN, uniquement en dev.
     const { default: mkcert } = await import('vite-plugin-mkcert');
@@ -18,8 +48,8 @@ export default defineConfig(async ({ command }) => {
   return {
     // Chemin public sous lequel l'application est servie. Vaut '/' partout où
     // elle est servie à la racine d'un domaine ou d'un hôte : dev server,
-    // `vite preview`, et le Raspberry derrière Caddy. Une publication sur
-    // GitHub Pages, elle, sert l'application sous un SOUS-CHEMIN
+    // `vite preview` ou un hébergement à la racine. Une publication sur
+    // GitHub Pages sert l'application sous un SOUS-CHEMIN
     // (`/Comparateur-de-Paniers/`) : tous les chemins absolus commençant par
     // '/' y désigneraient alors la racine du domaine, donc des fichiers qui
     // n'existent pas — page blanche garantie (dette identifiée dès l'audit du

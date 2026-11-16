@@ -90,6 +90,22 @@ describe('comparisonEngine', () => {
     expect(result.recommendation.kind).toBe('split');
   });
 
+  it('ne recommande pas de séparer le panier pour un gain nul, même avec un seuil à 0 €', () => {
+    // Un seul produit : le panier réparti est forcément identique au meilleur
+    // magasin seul, donc l'économie vaut exactement 0 €.
+    const result = compareShoppingList({
+      rows: [baseRows[1]],
+      candidates: mockProductCandidates,
+      priceSnapshots: freshPriceSnapshots,
+      savingThresholdEuro: 0,
+      autoDecisionMinConfidence: 75,
+      maxPriceAgeDays: DEFAULT_MAX_PRICE_AGE_DAYS
+    });
+
+    expect(result.savingsVsBestSingleStore).toBe(0);
+    expect(result.recommendation.kind).toBe('single_store');
+  });
+
   it('exclut sans blocage un produit dont la seule offre observée est indisponible', () => {
     const result = compareShoppingList({
       rows: [baseRows[0]],
@@ -465,8 +481,8 @@ describe('comparisonEngine', () => {
     // prix unitaires et la mention explicite que Leclerc reste à valider.
     const mismatchWarning = decision.warnings.find((warning) => warning.includes('pas le même format'));
     expect(mismatchWarning).toBeDefined();
-    expect(mismatchWarning).toContain('2.79 €/L');
-    expect(mismatchWarning).toContain('2.41 €/L');
+    expect(mismatchWarning).toContain('2,79 €/L');
+    expect(mismatchWarning).toContain('2,41 €/L');
     expect(mismatchWarning).toContain('Leclerc');
     expect(mismatchWarning).toMatch(/pas encore confirmé|à valider/);
   });
@@ -1070,7 +1086,7 @@ describe('comparisonEngine', () => {
       expect(decision?.warnings).toContain(
         "Le paquet trouvé n'est pas le même format dans les deux magasins : 375 g chez Leclerc contre 1040 g chez Hyper U. " +
           'Le prix comparé est donc le prix au kilo, pas le prix du paquet — ' +
-          '4.00 €/kg chez Leclerc, 2.79 €/kg chez Hyper U. ' +
+          '4,00 €/kg chez Leclerc, 2,79 €/kg chez Hyper U. ' +
           "À vérifier : ce n'est un comparatif juste que si c'est vraiment le même produit, juste en quantité différente."
       );
       // C'est le prix au kilo qui désigne le gagnant, pas le prix du paquet
@@ -1135,12 +1151,12 @@ describe('comparisonEngine', () => {
       expect(decision?.priceComparisonByStore.leclerc).toEqual({
         productName: 'Purée chez leclerc',
         packagePrice: 1.5,
-        unitPriceLabel: '4.00 €/kg'
+        unitPriceLabel: '4,00 €/kg'
       });
       expect(decision?.priceComparisonByStore.hyperu).toEqual({
         productName: 'Purée chez hyperu',
         packagePrice: 2.9,
-        unitPriceLabel: '2.79 €/kg'
+        unitPriceLabel: '2,79 €/kg'
       });
     });
 
@@ -1248,8 +1264,8 @@ describe('comparisonEngine', () => {
       });
 
       const decision = result.decisions.find((d) => d.itemId === 'item-puree');
-      expect(decision?.reason).toContain('6.83 €/kg chez Leclerc');
-      expect(decision?.reason).toContain('4.39 €/kg chez Hyper U');
+      expect(decision?.reason).toContain('6,83 €/kg chez Leclerc');
+      expect(decision?.reason).toContain('4,39 €/kg chez Hyper U');
     });
 
     it('garde la règle du prix le plus bas quand l’écart au kilo tient à l’arrondi', () => {

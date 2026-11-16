@@ -21,9 +21,15 @@ describe('manifest Firefox', () => {
   // reprises. Toute clé redéclarée dans l'overlay recrée ce risque, quelle
   // qu'elle soit : on refuse la duplication elle-même, pas seulement ses
   // conséquences connues.
-  it("ne redéclare aucune clé déjà portée par le manifest de base", () => {
-    const duplicated = Object.keys(overlay).filter((key) => key !== '//' && key in baseManifest);
+  it("ne redéclare aucune clé déjà portée par le manifest de base, sauf le contexte de fond Firefox", () => {
+    const duplicated = Object.keys(overlay).filter((key) => key !== '//' && key !== 'background' && key in baseManifest);
     expect(duplicated).toEqual([]);
+  });
+
+  it('remplace le service worker Chromium par le script de fond Firefox', () => {
+    const merged = readFirefoxManifest(extensionDir);
+    expect(baseManifest.background).toEqual({ service_worker: 'background/service-worker.js', type: 'module' });
+    expect(merged.background).toEqual({ scripts: ['background/service-worker.js'], type: 'module' });
   });
 
   // JSON n'a pas de commentaires : les clés « //… » servent à documenter les

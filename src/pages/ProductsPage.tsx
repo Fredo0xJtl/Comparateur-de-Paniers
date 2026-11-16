@@ -22,6 +22,10 @@ export function ProductsPage() {
   const [editValues, setEditValues] = useState<ProductFormValues>(emptyProductForm);
   const [editErrors, setEditErrors] = useState<ProductFormErrors>({});
   const [message, setMessage] = useState('');
+  // Suppression en deux temps (16/11) : elle efface aussi les prix trouvés et
+  // la ligne de la liste, sans retour possible ; un appui de travers sur
+  // téléphone suffisait à tout perdre.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -68,7 +72,8 @@ export function ProductsPage() {
 
   async function handleDeleteProduct(product: Product) {
     await deleteProduct(product.id);
-    setMessage('Produit supprimé localement.');
+    setConfirmDeleteId(null);
+    setMessage(`${product.name} supprimé.`);
     await refreshProducts();
   }
 
@@ -98,7 +103,7 @@ export function ProductsPage() {
             déjà connu, fiche officielle, catalogue du magasin, code-barres) —
             et, en dernier recours, ce même formulaire complet. */}
         <p className="panelText">
-          Les produits s'ajoutent depuis la page <Link to="/scan">Scan</Link>. Ici, tu peux les
+          Les produits s'ajoutent depuis la page <Link to="/scan">Ajouter</Link>. Ici, tu peux les
           corriger, les supprimer ou les remettre dans ta liste.
         </p>
       </div>
@@ -114,11 +119,11 @@ export function ProductsPage() {
         <div className="settingsPanel">
           <div>
             <h3>Aucun produit mémorisé</h3>
-            <p>Ajoute ton premier produit depuis le Scan, ou pioche dans ta liste de courses.</p>
+            <p>Tout produit ajouté une fois est retenu ici, pour le remettre dans une prochaine liste sans le ressaisir.</p>
           </div>
           <div className="cardActions">
             <Link className="buttonLink" to="/scan">
-              Scan
+              Ajouter un produit
             </Link>
             <Link className="buttonLink" to="/liste">
               Liste
@@ -158,18 +163,9 @@ export function ProductsPage() {
                       )}
                       {product.name}
                     </h3>
-                    <p>{product.brand ?? 'Marque non renseignée'}</p>
+                    {product.brand && <p>{product.brand}</p>}
                   </div>
-                  <dl>
-                    <div>
-                      <dt>Unité</dt>
-                      <dd>{product.comparisonUnit}</dd>
-                    </div>
-                    <div>
-                      <dt>Code</dt>
-                      <dd>{product.barcode ?? 'Absent'}</dd>
-                    </div>
-                  </dl>
+                  {product.barcode && <p className="panelText">Code-barres : {product.barcode}</p>}
                   <div className="cardActions">
                     <button
                       className="secondaryButton"
@@ -199,11 +195,25 @@ export function ProductsPage() {
                     <button
                       className="dangerButton"
                       type="button"
-                      onClick={() => handleDeleteProduct(product)}
+                      onClick={() => setConfirmDeleteId(product.id)}
                     >
                       Supprimer
                     </button>
                   </div>
+                  {confirmDeleteId === product.id && (
+                    <div className="confirmPanel" role="alert">
+                      <p>
+                        Supprimer « {product.name} » ? Sa fiche, les prix déjà trouvés et sa ligne dans ta liste
+                        seront effacés.
+                      </p>
+                      <button className="dangerButton" type="button" onClick={() => void handleDeleteProduct(product)}>
+                        Supprimer
+                      </button>
+                      <button className="secondaryButton" type="button" autoFocus onClick={() => setConfirmDeleteId(null)}>
+                        Annuler
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </article>

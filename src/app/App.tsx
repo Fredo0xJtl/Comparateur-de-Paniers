@@ -1,5 +1,5 @@
 import { Suspense, useEffect } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { appRoutes } from './navigation';
 import { ErrorBoundary } from './ErrorBoundary';
 import { lazyRoute } from './lazyRoute';
@@ -29,12 +29,20 @@ export function App() {
   // arriver directement sur n'importe quelle page par un lien ou un signet,
   // et l'installation manquante le concerne autant.
   const welcome = useWelcome();
+  // En-tête complet sur l'accueil seulement : ailleurs, logo + titre + phrase
+  // d'accroche prenaient environ un quart de l'écran du téléphone à chaque
+  // page (audit du 16/11), pour une phrase déjà lue.
+  const isHome = location.pathname === '/';
 
   useEffect(() => {
     // Applique le thème enregistré dès le premier rendu ; un léger flash au
     // thème système par défaut est possible le temps de lire IndexedDB (async),
     // sans conséquence pratique (réglage qui change rarement, app déjà en cache).
-    void getSettings().then((settings) => applyTheme(settings.theme));
+    // Base locale indisponible : on garde le thème par défaut, sans erreur
+    // non traitée dans la console.
+    void getSettings()
+      .then((settings) => applyTheme(settings.theme))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -49,7 +57,7 @@ export function App() {
 
   return (
     <div className="appShell">
-      <header className="appHeader">
+      <header className={isHome ? 'appHeader' : 'appHeader appHeaderCompact'}>
         <div className="appHeaderBrand">
           {/* Préfixé par le chemin public : en dur, `/icon.svg` désigne la
               racine du domaine, où le fichier n'existe pas si l'application
@@ -58,9 +66,11 @@ export function App() {
           <img className="appLogo" src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
           <div>
             <h1>Comparateur de Paniers</h1>
-            <p className="appTagline">
-              Comparez les prix entre drive, validez, puis remplissez votre panier automatiquement.
-            </p>
+            {isHome && (
+              <p className="appTagline">
+                Compare tes courses entre Leclerc Drive et Courses U, puis remplis ton panier automatiquement.
+              </p>
+            )}
           </div>
         </div>
         <button
@@ -106,6 +116,9 @@ export function App() {
               <Route path="/liste" element={<ShoppingListPage />} />
               <Route path="/comparaison" element={<ComparePage />} />
               <Route path="/parametres" element={<SettingsPage />} />
+              {/* Adresse inconnue (lien ancien, faute de frappe) : l'accueil
+                  plutôt qu'une page vide. */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>

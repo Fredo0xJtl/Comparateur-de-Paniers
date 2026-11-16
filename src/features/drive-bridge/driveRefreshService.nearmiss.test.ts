@@ -193,6 +193,52 @@ describe('runDriveRefresh — persistance des quasi-matchs (nearMisses)', () => 
     // Aucune suppression : le prix précédent reste consultable dans l'historique.
     expect(snapshot?.price).toBe(2.5);
   });
+
+  // 16/11 : Firefox mis en arrière-plan pendant la collecte Leclerc. Aucune
+  // recherche n'a eu lieu, le dernier prix connu doit rester utilisable.
+  it("STORE_TAB_HIDDEN n'invalide pas le prix déjà connu", async () => {
+    const matchedCandidateId = `price-leclerc-${product.id}`;
+    const ok = nearMissReport();
+    mockStartDriveRefresh.mockResolvedValueOnce({
+      accepted: true,
+      report: {
+        ...ok.report,
+        errors: [],
+        observations: [
+          {
+            protocolVersion: 1,
+            jobId: 'job-1',
+            productId: product.id,
+            storeKey: 'leclerc',
+            localStoreId: 'store-1',
+            externalStoreId: 'store-1',
+            observedName: 'Le vrai produit',
+            matchScore: 1,
+            priceEuro: 2.5,
+            available: true,
+            productUrl: 'https://www.leclercdrive.fr/produit/vrai-1',
+            observedAt: '2026-08-01T00:00:00.000Z',
+            evidence: 'official_drive_page' as const
+          }
+        ]
+      }
+    });
+    await runDriveRefresh([makeRow()]);
+
+    mockStartDriveRefresh.mockResolvedValueOnce({
+      accepted: true,
+      report: {
+        jobId: 'job-2',
+        status: 'completed' as const,
+        observations: [],
+        errors: [{ storeKey: 'leclerc', productId: product.id, code: 'STORE_TAB_HIDDEN' }]
+      }
+    });
+    await runDriveRefresh([makeRow()]);
+
+    expect((await db.priceSnapshots.get(matchedCandidateId))?.available).toBe(true);
+    expect(await db.driveSearchMemory.toArray()).toEqual([]);
+  });
 });
 
 // Relevé sur le téléphone le 02/09 : des candidats alternatifs affichés avec

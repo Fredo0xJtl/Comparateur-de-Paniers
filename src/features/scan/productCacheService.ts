@@ -88,28 +88,6 @@ export async function purgeExpiredProductCache(): Promise<number> {
   }
 }
 
-export async function setCachedUnistore(
-  barcode: string,
-  product: Product | null,
-  availableAt: 'hyperu' | 'leclerc'
-): Promise<void> {
-  const storeAvailability = {
-    hyperu: availableAt === 'hyperu',
-    leclerc: availableAt === 'leclerc'
-  };
-
-  const source = availableAt === 'hyperu' ? 'hyperu_only' : 'leclerc_only';
-  await setCachedProduct(barcode, product, source, storeAvailability);
-}
-
-export async function clearProductCache(): Promise<void> {
-  try {
-    await db.productCache.clear();
-  } catch {
-    // Ignorer
-  }
-}
-
 export function formatCacheAge(cachedAt: string): string {
   const now = new Date();
   const cached = new Date(cachedAt);

@@ -236,19 +236,37 @@ function parseOffQuantity(product: Record<string, unknown>): { baseQuantity: num
 // soustraction numérique en aval, sans reconversion d'unité à chaque usage.
 function normalizeOffUnit(rawUnit: string): { unit: ProductBaseUnit; scale: number } | null {
   const unit = rawUnit.trim().toLowerCase();
-  if (unit === 'g') return { unit: 'g', scale: 1 };
-  if (unit === 'kg') return { unit: 'g', scale: 1000 };
+  if (unit === 'g' || unit === 'gr' || unit === 'gramme' || unit === 'grammes') return { unit: 'g', scale: 1 };
+  if (unit === 'kg' || unit === 'kilo' || unit === 'kilos') return { unit: 'g', scale: 1000 };
   if (unit === 'ml') return { unit: 'ml', scale: 1 };
-  if (unit === 'l') return { unit: 'ml', scale: 1000 };
+  if (unit === 'l' || unit === 'litre' || unit === 'litres') return { unit: 'ml', scale: 1000 };
   if (unit === 'cl') return { unit: 'ml', scale: 10 };
   return null;
+}
+
+// Miroir de UNITS / NUMBER / toNumber / toFormat dans
+// extension/shared/quantity-parser.js (explications là-bas) : séparateur de
+// milliers "1 000 g", formes longues "litre", "gr", et jamais de format nul.
+const UNITS = 'kilos?|kg|grammes?|gr|g|cl|ml|litres?|l';
+const NUMBER = '\\d{1,3}[ \\u00a0\\u202f]000(?![\\d.,])|\\d+(?:[.,]\\d+)?';
+
+function toNumber(raw: string): number {
+  return Number.parseFloat(raw.replace(/[   ]/g, '').replace(',', '.'));
+}
+
+function toFormat(
+  total: number,
+  mapped: { unit: ProductBaseUnit; scale: number }
+): { baseQuantity: number; baseUnit: ProductBaseUnit } | null {
+  const baseQuantity = total * mapped.scale;
+  return Number.isFinite(baseQuantity) && baseQuantity > 0 ? { baseQuantity, baseUnit: mapped.unit } : null;
 }
 
 // Repli quand OFF n'a que le texte libre ("375 g", "6 x 1.5 L", "1kg"...).
 // Volontairement limité aux unités de poids/volume comparables entre
 // magasins — un format comme "4 personnes" ne dit rien du grammage réel et
 // est ignoré plutôt que de produire un faux repère.
-const QUANTITY_MULTIPLIER_PATTERN = /(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|cl|ml|l)\b/i;
+const QUANTITY_MULTIPLIER_PATTERN = new RegExp(`(\\d+)\\s*[x×]\\s*(${NUMBER})\\s*(${UNITS})\\b`, 'i');
 
 // Même multiplication écrite en toutes lettres ("6 briques de 1L") : le
 // champ `quantity` d'Open Food Facts est saisi à la main et n'est pas
@@ -260,43 +278,63 @@ const QUANTITY_MULTIPLIER_PATTERN = /(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|c
 const PACK_CONTAINERS =
   'briques?|bouteilles?|pots?|bo[iî]tes?|sachets?|packs?|canettes?|barquettes?|tubes?|flacons?|berlingots?|paquets?|bidons?|conserves?';
 const QUANTITY_PACK_PATTERN = new RegExp(
-  `(\\d+)\\s*(?:${PACK_CONTAINERS})\\s*(?:de|d')\\s*(\\d+(?:[.,]\\d+)?)\\s*(kg|g|cl|ml|l)\\b`,
+  `(\\d+)\\s*(?:${PACK_CONTAINERS})\\s*(?:de|d')\\s*(${NUMBER})\\s*(${UNITS})\\b`,
   'i'
 );
 
-const QUANTITY_SIMPLE_PATTERN = /(\d+(?:[.,]\d+)?)\s*(kg|g|cl|ml|l)\b/i;
+// Miroir de extension/shared/quantity-parser.js. Lot écrit dans l'autre sens : "1,5L x 6", "33cl x24", "1,5 L pack de 6".
+// Sans ces motifs seul le format d'une unité était lu (1,5 L au lieu de 9 L),
+// et le prix au litre calculé se trouvait multiplié par la taille du lot.
+// Le nombre de droite doit clore l'expression ou être suivi d'un contenant :
+// dans "2L x 30 lavages", 30 n'est pas un nombre de bouteilles.
+const QUANTITY_REVERSED_MULTIPLIER_PATTERN = new RegExp(
+  `(${NUMBER})\\s*(${UNITS})\\s*[x×]\\s*(\\d+)(?![\\d.,])(?!\\s*(?!(?:${PACK_CONTAINERS})\\b)[a-zà-ÿ])`,
+  'i'
+);
+const QUANTITY_TRAILING_PACK_PATTERN = new RegExp(
+  `(${NUMBER})\\s*(${UNITS})\\b[\\s,;()-]*(?:packs?|lots?)\\s*de\\s*(\\d+)(?![\\d.,])`,
+  'i'
+);
 
-function parseQuantityText(text: string): { baseQuantity: number; baseUnit: ProductBaseUnit } | null {
+const QUANTITY_SIMPLE_PATTERN = new RegExp(`(${NUMBER})\\s*(${UNITS})\\b`, 'i');
+
+export function parseQuantityText(text: string): { baseQuantity: number; baseUnit: ProductBaseUnit } | null {
   if (!text) return null;
   const normalized = text.toLowerCase();
 
   const multiplierMatch = normalized.match(QUANTITY_MULTIPLIER_PATTERN);
   if (multiplierMatch) {
     const count = Number.parseInt(multiplierMatch[1], 10);
-    const unitQuantity = Number.parseFloat(multiplierMatch[2].replace(',', '.'));
     const mapped = normalizeOffUnit(multiplierMatch[3]);
-    if (mapped && Number.isFinite(count) && Number.isFinite(unitQuantity)) {
-      return { baseQuantity: count * unitQuantity * mapped.scale, baseUnit: mapped.unit };
-    }
+    const format = mapped && toFormat(count * toNumber(multiplierMatch[2]), mapped);
+    if (format) return format;
   }
 
   const packMatch = normalized.match(QUANTITY_PACK_PATTERN);
   if (packMatch) {
     const count = Number.parseInt(packMatch[1], 10);
-    const unitQuantity = Number.parseFloat(packMatch[2].replace(',', '.'));
     const mapped = normalizeOffUnit(packMatch[3]);
-    if (mapped && Number.isFinite(count) && count > 0 && Number.isFinite(unitQuantity)) {
-      return { baseQuantity: count * unitQuantity * mapped.scale, baseUnit: mapped.unit };
-    }
+    const format = mapped && toFormat(count * toNumber(packMatch[2]), mapped);
+    if (format) return format;
+  }
+
+  for (const pattern of [QUANTITY_REVERSED_MULTIPLIER_PATTERN, QUANTITY_TRAILING_PACK_PATTERN]) {
+    const reversedMatch = normalized.match(pattern);
+    if (!reversedMatch) continue;
+    const count = Number.parseInt(reversedMatch[3], 10);
+    // « Lessive 2L x 30 » veut dire 30 lavages, pas 30 bidons : au-delà de
+    // 24 (le plus gros lot courant), un nombre nu n'est pas une taille de lot.
+    if (pattern === QUANTITY_REVERSED_MULTIPLIER_PATTERN && count > 24) continue;
+    const mapped = normalizeOffUnit(reversedMatch[2]);
+    const format = mapped && toFormat(count * toNumber(reversedMatch[1]), mapped);
+    if (format) return format;
   }
 
   const simpleMatch = normalized.match(QUANTITY_SIMPLE_PATTERN);
   if (simpleMatch) {
-    const quantity = Number.parseFloat(simpleMatch[1].replace(',', '.'));
     const mapped = normalizeOffUnit(simpleMatch[2]);
-    if (mapped && Number.isFinite(quantity)) {
-      return { baseQuantity: quantity * mapped.scale, baseUnit: mapped.unit };
-    }
+    const format = mapped && toFormat(toNumber(simpleMatch[1]), mapped);
+    if (format) return format;
   }
 
   return null;

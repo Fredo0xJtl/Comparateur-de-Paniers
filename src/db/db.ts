@@ -12,7 +12,7 @@ import {
   type UserStore,
   type ValidatedBasket
 } from '../types/domain';
-import { DB_NAME, DB_VERSION, dbSchema, type SyncCursorEntry } from './schema';
+import { DB_NAME, DB_VERSION, dbSchema, removedTables } from './schema';
 import type { CachedProductEntry } from '../features/scan/productCacheService';
 
 export class DrivePriceSplitterDb extends Dexie {
@@ -28,12 +28,31 @@ export class DrivePriceSplitterDb extends Dexie {
   validatedBaskets!: Table<ValidatedBasket, string>;
   productCache!: Table<CachedProductEntry, string>;
   driveManualOverrides!: Table<DriveManualOverrideEntry, string>;
-  syncCursors!: Table<SyncCursorEntry, string>;
 
   constructor() {
     super(DB_NAME);
-    this.version(DB_VERSION).stores(dbSchema);
+    this.version(DB_VERSION).stores({ ...dbSchema, ...removedTables });
   }
 }
 
 export const db = new DrivePriceSplitterDb();
+
+// Un autre onglet ouvre une version plus récente de la base : on libère la
+// connexion (sinon sa mise à jour reste bloquée) et on recharge pour repartir
+// sur le nouveau code.
+db.on('versionchange', () => {
+  db.close();
+  if (typeof location !== 'undefined') location.reload();
+});
+
+// Demande au navigateur de ne pas effacer la base quand le stockage vient à
+// manquer. Par défaut IndexedDB est "au mieux" : listes et prix peuvent
+// disparaître sans prévenir. Le navigateur peut refuser, d'où le booléen.
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+  try {
+    return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  } catch {
+    return false;
+  }
+}

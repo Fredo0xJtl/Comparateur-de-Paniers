@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ComparisonDecision, type StoreCoverage, type StoreCoverageLine } from '../features/comparison/comparisonEngine';
 import { type ProductCandidate } from '../types/domain';
 import { runLivePick } from '../features/drive-bridge/driveRefreshService';
-import { CoverageBreakdown, ValidationPanel, findCartFillMismatches } from './ComparePage';
+import { CoverageBreakdown } from './compare/CoveragePanels';
+import { ValidationPanel } from './compare/ValidationPanel';
+import { findCartFillMismatches } from './compare/cartFillDiagnostics';
 
 // Automock (pas de factory partielle) : ComparePage.tsx importe plusieurs
 // autres symboles de ce module (runDriveRefresh, downloadDriveDiagnostic,
@@ -47,7 +49,7 @@ describe('ValidationPanel', () => {
       />
     );
 
-    expect(screen.getByText('Aucun produit à valider pour cette comparaison.')).toBeTruthy();
+    expect(screen.getByText('Rien à vérifier : tous les produits ont été reconnus.')).toBeTruthy();
   });
 
   it('propose un quasi-match incertain avec un bouton "Choisir" et un bouton "Aucun de ceux-là"', async () => {
@@ -142,7 +144,7 @@ describe('ValidationPanel', () => {
       />
     );
 
-    expect(screen.getByText(/formats trouvés en magasin/)).toBeTruthy();
+    expect(screen.getByText(/formats disponibles/)).toBeTruthy();
     // Sans productUrl, pas de lien "Voir la fiche" à afficher.
     expect(screen.queryByText('Voir la fiche')).toBeNull();
   });
@@ -227,7 +229,7 @@ describe('ValidationPanel', () => {
     // un bouton blanc identique à "rien trouvé" : une fiche existe déjà pour
     // Hyper U, le bouton doit le dire pour inviter à la vérifier.
     expect(screen.queryByText('✓ Déjà trouvé chez Hyper U')).toBeNull();
-    expect(screen.getByText('✓ Fiche trouvée chez Hyper U — à confirmer')).toBeTruthy();
+    expect(screen.getByText('✓ Produit trouvé chez Hyper U — à confirmer')).toBeTruthy();
     expect(screen.getByText('Choisir sur la page Leclerc')).toBeTruthy();
   });
 
@@ -335,7 +337,7 @@ describe('CoverageBreakdown', () => {
     );
 
     expect(screen.getByText('Thé glacé pêche')).toBeTruthy();
-    expect(screen.getByText('1.89 €')).toBeTruthy();
+    expect(screen.getByText('1,89 €')).toBeTruthy();
     const link = screen.getByText('Voir le produit') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('https://www.leclercdrive.fr/produit/1');
     // Prix déjà ferme : rien à valider manuellement sur cette ligne.
@@ -357,7 +359,7 @@ describe('CoverageBreakdown', () => {
       />
     );
 
-    expect(screen.getByText('À valider (1.35 €)')).toBeTruthy();
+    expect(screen.getByText('À valider (1,35 €)')).toBeTruthy();
   });
 
   it('affiche une ligne unavailable ("indisponible chez ce magasin") et une ligne notFound ("non trouvé"), sans lien produit', () => {
@@ -423,7 +425,7 @@ describe('CoverageBreakdown', () => {
       />
     );
 
-    expect(screen.getByText('Aucun produit dans la liste de courses.')).toBeTruthy();
+    expect(screen.getByText('Ta liste de courses est vide.')).toBeTruthy();
   });
 
   // Retour explicite du 31/08 : "je n'ai pas la coche verte pour valider ce

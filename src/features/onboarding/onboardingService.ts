@@ -104,10 +104,10 @@ export function buildWelcomeSteps(state: WelcomeState): WelcomeStep[] {
       id: 'firefox',
       title: 'Utiliser Firefox',
       description: isFirefox
-        ? 'Vous y êtes déjà.'
+        ? 'Tu y es déjà.'
         : isMobile
-          ? 'Cette application a besoin de Firefox pour Android : c’est le seul navigateur mobile capable d’installer le connecteur. Installez-le, puis rouvrez cette page dedans.'
-          : 'Cette application a besoin de Firefox : c’est le seul navigateur capable d’installer le connecteur. Installez-le, puis rouvrez cette page dedans.',
+          ? 'Cette application a besoin de Firefox pour Android : c’est le seul navigateur mobile capable d’installer le connecteur. Installe-le, puis rouvre cette page dedans.'
+          : 'Cette application a besoin de Firefox : c’est le seul navigateur capable d’installer le connecteur. Installe-le, puis rouvre cette page dedans.',
       done: isFirefox,
       ...(isFirefox ? {} : { action: { label: 'Télécharger Firefox', href: FIREFOX_DOWNLOAD_URL } })
     },
@@ -116,7 +116,7 @@ export function buildWelcomeSteps(state: WelcomeState): WelcomeStep[] {
       title: 'Ajouter le connecteur à Firefox',
       description: state.extensionReady
         ? 'Le connecteur est installé et répond.'
-        : 'C’est lui qui va lire les prix sur les sites des enseignes, à votre place. Ajoutez-le depuis le site officiel des modules Firefox, puis revenez ici et rechargez la page.',
+        : 'C’est lui qui va lire les prix sur les sites des enseignes, à ta place. Ajoute-le depuis le site officiel des modules Firefox, puis reviens ici et recharge la page.',
       done: state.extensionReady,
       // Le lien reste proposé hors Firefox : la page du module s'ouvre
       // partout, et voir de quoi il s'agit aide à comprendre l'étape
@@ -125,10 +125,10 @@ export function buildWelcomeSteps(state: WelcomeState): WelcomeStep[] {
     },
     {
       id: 'compte',
-      title: 'Se connecter à vos magasins',
+      title: 'Te connecter à tes magasins',
       description:
-        'Connectez-vous à vos comptes Leclerc Drive et Courses U dans ce même Firefox, comme d’habitude. ' +
-        'L’application ne connaît jamais vos identifiants : elle travaille dans la session que vous avez ouverte vous-même.',
+        'Connecte-toi à tes comptes Leclerc Drive et Courses U dans ce même Firefox, comme d’habitude. ' +
+        'L’application ne connaît jamais tes identifiants : elle utilise la connexion que tu as ouverte toi-même.',
       // Impossible à vérifier sans ouvrir les sites des enseignes, ce qui
       // serait intrusif pour une simple case à cocher : cette étape reste
       // informative.

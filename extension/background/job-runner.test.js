@@ -581,6 +581,28 @@ describe('createDriveJobRunner', () => {
 
     expect(tabs._updated).toContainEqual(expect.objectContaining({ id: 999, active: true }));
   });
+
+  // Demande du 16/11 : pas connecté au magasin → on reste sur son écran de
+  // connexion au lieu de revenir à l'application.
+  it("laisse l'onglet du magasin affiché quand il faut se connecter", async () => {
+    const tabs = createFakeTabs();
+    const session = createFakeSession();
+    const runStore = vi.fn().mockResolvedValue({
+      observations: [],
+      errors: [{ storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED' }],
+      keepTabOpen: true
+    });
+    const runner = createDriveJobRunner({ tabs, session, runStore });
+
+    await runner.start(baseJob({ stores: [{ storeKey: 'leclerc', localStoreId: 'store-1' }] }), undefined, {
+      callerTabId: 999
+    });
+
+    const storeTabId = tabs._created[0]?.id;
+    expect(Number.isInteger(storeTabId)).toBe(true);
+    expect(tabs._updated.at(-1)).toEqual(expect.objectContaining({ id: storeTabId, active: true }));
+    expect(tabs._updated).not.toContainEqual(expect.objectContaining({ id: 999, active: true }));
+  });
 });
 
 describe('recoverInterruptedJob', () => {

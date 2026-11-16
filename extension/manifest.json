@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Comparateur de Paniers — Connecteur Drive",
   "description": "Collecte locale et volontaire des prix affichés par les catalogues Drive sélectionnés.",
-  "version": "0.7.2",
+  "version": "0.7.15",
   "minimum_chrome_version": "109",
   "icons": {
     "192": "icons/icon-192.png",
@@ -17,16 +17,14 @@
     "https://*.leclercdrive.fr/*",
     "https://*.coursesu.com/*"
   ],
-  "//optional_host_permissions": "AUCUNE de ces permissions n'est accordée à l'installation : Firefox ne les demande QUE si l'utilisateur déclare lui-même l'adresse de son installation dans la page d'options, et uniquement pour CETTE adresse (permissions.request). Elles existent parce que l'adresse d'une installation auto-hébergée (ordinateur, NAS, Raspberry Pi, domaine personnel) ne peut par définition pas figurer dans un paquet distribué — voir extension/shared/custom-origins.js. http:// est limité à la boucle locale : ailleurs, une page en clair peut être imitée par quiconque s'interpose sur le réseau, et obtiendrait alors le droit de piloter l'extension dans la session authentifiée de l'utilisateur sur les sites des enseignes.",
+  "//optional_host_permissions": "AUCUNE de ces permissions n'est accordée à l'installation : Firefox ne les demande QUE si l'utilisateur déclare lui-même l'adresse de son installation dans la page d'options, et uniquement pour CETTE adresse (permissions.request). Elles existent parce qu'une adresse locale ou un domaine personnel ne peut par définition pas figurer dans un paquet distribué — voir extension/shared/custom-origins.js. http:// est limité à la boucle locale : ailleurs, une page en clair peut être imitée par quiconque s'interpose sur le réseau, et obtiendrait alors le droit de piloter l'extension dans la session authentifiée de l'utilisateur sur les sites des enseignes.",
   "optional_host_permissions": [
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
   "background": {
-    "scripts": [
-      "background/service-worker.js"
-    ],
+    "service_worker": "background/service-worker.js",
     "type": "module"
   },
   "action": {

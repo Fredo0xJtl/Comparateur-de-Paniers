@@ -54,6 +54,48 @@ describe('backupService', () => {
     });
   });
 
+  it('sauvegarde et restaure les corrections manuelles', async () => {
+    const override = {
+      productId: 'prod-ice-tea-peche',
+      storeKey: 'hyperu' as const,
+      productUrl: 'https://www.coursesu.com/p/exemple',
+      updatedAt: '2026-11-15T10:00:00.000Z'
+    };
+    await db.driveManualOverrides.put(override);
+
+    const json = JSON.stringify(await exportLocalBackup());
+    await db.driveManualOverrides.clear();
+    await importLocalBackup(parseLocalBackup(json));
+
+    expect(await db.driveManualOverrides.toArray()).toEqual([override]);
+  });
+
+  it('une sauvegarde ancienne, sans corrections manuelles, ne vide pas celles de l’appareil', async () => {
+    const backup = JSON.parse(JSON.stringify(await exportLocalBackup()));
+    delete backup.data.driveManualOverrides;
+    backup.includedTables = backup.includedTables.filter((key: string) => key !== 'driveManualOverrides');
+    await db.driveManualOverrides.put({
+      productId: 'prod-ice-tea-peche',
+      storeKey: 'hyperu',
+      productUrl: 'https://www.coursesu.com/p/exemple',
+      updatedAt: '2026-11-15T10:00:00.000Z'
+    });
+
+    const parsed = parseLocalBackup(JSON.stringify(backup));
+    expect(parsed.includedTables).not.toContain('driveManualOverrides');
+    await importLocalBackup(parsed);
+
+    expect(await db.driveManualOverrides.count()).toBe(1);
+  });
+
+  it('refuse une correction manuelle dont l’adresse n’est pas en https', async () => {
+    const backup = JSON.parse(JSON.stringify(await exportLocalBackup()));
+    backup.data.driveManualOverrides = [
+      { productId: 'p', storeKey: 'hyperu', productUrl: 'javascript:alert(1)', updatedAt: '2026-11-15T10:00:00.000Z' }
+    ];
+    expect(() => parseLocalBackup(JSON.stringify(backup))).toThrow('driveManualOverrides[0]');
+  });
+
   it('rejects invalid JSON and unknown schema versions', () => {
     expect(() => parseLocalBackup('{bad json')).toThrow('JSON invalide');
     expect(() =>

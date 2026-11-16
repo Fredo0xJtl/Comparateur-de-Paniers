@@ -18,12 +18,11 @@ on:
   # Permet aussi un déploiement manuel depuis l'onglet Actions, sans commit.
   workflow_dispatch:
 
+# Droits minimaux par défaut. Les droits d'écriture sur Pages ne sont donnés
+# qu'au job `deploy` plus bas : le job `build` installe et exécute du code
+# tiers (npm ci), il ne doit pas pouvoir publier.
 permissions:
   contents: read
-  pages: write
-  # Jeton d'identité réclamé par actions/deploy-pages pour prouver à GitHub
-  # Pages que l'artefact vient bien de ce workflow.
-  id-token: write
 
 # Un seul déploiement à la fois. `cancel-in-progress: false` : un déploiement
 # déjà lancé va au bout, sinon Pages peut rester sur une version partielle.
@@ -31,17 +30,31 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Le dépôt de développement porte le suffixe `-Dev`, mais la page publique
+# historique — et l'adresse autorisée par le connecteur Firefox — ne l'a pas.
+# Cette valeur est la source de vérité du workflow : ne jamais la déduire du
+# nom du dépôt.
+env:
+  PUBLIC_BASE: /Comparateur-de-Paniers/
+
 jobs:
   build:
+    # GitHub Pages n'existe pas sur un dépôt privé en offre gratuite : sur
+    # l'atelier privé ce workflow échouait à chaque push, et ce rouge
+    # permanent masquait les vrais échecs. Il ne tourne que sur un dépôt public.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
+      # Actions épinglées par empreinte (SHA) : une étiquette comme `v7` peut
+      # être déplacée par son éditeur, une empreinte non. Dependabot met à
+      # jour l'empreinte et le commentaire de version.
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       # Garde-fou. L'extension Firefox n'installe son pont avec l'application
@@ -53,10 +66,9 @@ jobs:
       # préférable à ce silence.
       - name: Verifie que l'extension connait l'adresse publiee
         run: |
-          depot="${GITHUB_REPOSITORY#*/}"
           # Seul le nom d'hôte est insensible à la casse ; le chemin, non.
           proprietaire=$(printf '%s' "${GITHUB_REPOSITORY%%/*}" | tr '[:upper:]' '[:lower:]')
-          adresse="https://${proprietaire}.github.io/${depot}/"
+          adresse="https://${proprietaire}.github.io${PUBLIC_BASE}"
           if ! grep -qF "$adresse" extension/manifest.json; then
             echo "::error::extension/manifest.json ne declare pas $adresse dans content_scripts.matches."
             echo "Adresses actuellement declarees :"
@@ -65,41 +77,54 @@ jobs:
             exit 1
           fi
           echo "OK : l'extension reconnait $adresse"
-          # Le préfixe est calculé ici, une seule fois, et transmis à l'étape de
-          # build : ce qui est vérifié et ce qui est construit ne peuvent donc
-          # pas diverger.
-          echo "PUBLIC_BASE=/${depot}/" >> "$GITHUB_ENV"
+          # Le même préfixe est transmis à l'étape de build : ce qui est
+          # vérifié et ce qui est construit ne peuvent donc pas diverger.
+          echo "PUBLIC_BASE=${PUBLIC_BASE}" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Test
-        run: npm run test
+        run: |
+          npm run test
+          node --test tools/pages-workflow.test.mjs
 
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v6
+      # Mêmes contrôles que la CI : sans eux, une version qui contacte une
+      # adresse non déclarée ou dont le manifeste est invalide partait en
+      # ligne alors que la CI était rouge.
+      - name: Privacy check
+        run: npm run privacy:check
 
-      # `PUBLIC_BASE` vient de l'étape de vérification ci-dessus, qui l'a déduit
-      # du nom réel du dépôt : renommer le dépôt n'oblige pas à toucher ce
-      # fichier.
+      - name: Extension manifest check
+        run: npm run extension:check
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      # `PUBLIC_BASE` est l'adresse publique explicitement contrôlée ci-dessus.
       - name: Build
         run: npm run build:pages
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      # Jeton d'identité réclamé par actions/deploy-pages pour prouver à
+      # GitHub Pages que l'artefact vient bien de ce workflow.
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

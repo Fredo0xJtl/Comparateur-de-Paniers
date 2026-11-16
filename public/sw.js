@@ -3,8 +3,8 @@ const CACHE_NAME = 'drive-price-splitter-static-v4';
 // Ce fichier est copié tel quel depuis public/ : Vite ne le transforme pas et
 // ne peut donc pas y réécrire le chemin public (`base` dans vite.config.ts).
 // Les chemins sont donc dérivés de l'emplacement RÉEL du service worker :
-// '/' quand l'application est servie à la racine (dev, `vite preview`,
-// Raspberry), '/Comparateur-de-Paniers/' sur GitHub Pages. En dur, '/'
+// '/' quand l'application est servie à la racine (dev ou `vite preview`),
+// '/Comparateur-de-Paniers/' sur GitHub Pages. En dur, '/'
 // pointait vers la racine du domaine — un fichier qui n'existe pas là-bas, et
 // une application hors ligne cassée.
 const BASE_PATH = new URL('./', self.location).pathname;
@@ -107,7 +107,22 @@ async function cacheFirst(request) {
     const responseForCache = networkResponse.clone();
     const cache = await caches.open(CACHE_NAME);
     await cache.put(request, responseForCache);
+    await trimCache(cache);
   }
 
   return networkResponse;
+}
+
+// Chaque nouvelle version de l'app apporte des fichiers aux noms différents
+// (hash), et les anciens n'étaient jamais retirés : le cache grossissait sans
+// fin. On garde les plus récents ; `keys()` les rend dans l'ordre d'ajout,
+// donc les premiers sont les plus anciens. Une version complète compte une
+// vingtaine de fichiers, 60 laisse de la marge.
+const MAX_CACHE_ENTRIES = 60;
+
+async function trimCache(cache) {
+  const keys = await cache.keys();
+  const excess = keys.length - MAX_CACHE_ENTRIES;
+  if (excess <= 0) return;
+  await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
 }

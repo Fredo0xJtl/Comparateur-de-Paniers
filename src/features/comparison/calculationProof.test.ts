@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { demoProducts } from '../../db/seed';
 import { mockPriceSnapshots, mockProductCandidates } from '../stores/mockStoreData';
 import { compareShoppingList } from './comparisonEngine';

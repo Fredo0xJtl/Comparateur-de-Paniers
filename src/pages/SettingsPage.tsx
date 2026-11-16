@@ -12,7 +12,6 @@ import {
 } from '../features/backup/backupService';
 import { clearDriveSearchMemory } from '../features/drive-bridge/driveRefreshService';
 import { applyTheme, getSettings, updateSettings } from '../features/settings/settingsService';
-import { SyncSettingsPanel } from '../features/sync/SyncSettingsPanel';
 import { type UserSettings } from '../types/domain';
 
 const MAX_BACKUP_FILE_BYTES = 2 * 1024 * 1024;
@@ -27,6 +26,7 @@ const BACKUP_GROUPS: Array<{ key: string; label: string; tables: BackupTableKey[
   { key: 'stores', label: 'Magasins', tables: ['userStores'] },
   { key: 'lists', label: 'Listes de courses', tables: ['shoppingLists', 'shoppingListItems'] },
   { key: 'prices', label: 'Prix (fiches + relevés)', tables: ['productCandidates', 'priceSnapshots'] },
+  { key: 'overrides', label: 'Corrections manuelles', tables: ['driveManualOverrides'] },
   { key: 'baskets', label: 'Paniers validés', tables: ['validatedBaskets'] },
   { key: 'settings', label: 'Réglages', tables: ['settings'] }
 ];
@@ -166,11 +166,11 @@ export function SettingsPage() {
       setPendingExport(backup);
       setPendingExportSummary(summarizeLocalBackup(backup));
       setBackupStatus('ready');
-      setBackupMessage('Export JSON prêt. Vérifie le résumé avant de télécharger.');
+      setBackupMessage('Sauvegarde prête. Vérifie le résumé avant de la télécharger.');
     } catch (error) {
       console.error('Export local backup a échoué :', error);
       setBackupStatus('error');
-      setBackupMessage('Impossible de générer l’export local.');
+      setBackupMessage('Impossible de créer la sauvegarde.');
     }
   }
 
@@ -187,7 +187,7 @@ export function SettingsPage() {
     link.download = `drive-price-splitter-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    setBackupMessage('Export JSON généré localement.');
+    setBackupMessage('Sauvegarde créée sur ton téléphone.');
     const nextSettings = await updateSettings({ lastBackupExportedAt: new Date().toISOString() });
     setSettings(nextSettings);
   }
@@ -218,7 +218,7 @@ export function SettingsPage() {
       );
     } catch (error) {
       setBackupStatus('error');
-      setBackupMessage(error instanceof Error ? error.message : 'Import JSON invalide.');
+      setBackupMessage(error instanceof Error ? error.message : 'Fichier de sauvegarde invalide.');
     }
   }
 
@@ -247,9 +247,9 @@ export function SettingsPage() {
   return (
     <section className="pageStack" aria-labelledby="settings-title">
       <div className="pageTitle">
-        <h2 id="settings-title">Préférences locales</h2>
+        <h2 id="settings-title">Réglages</h2>
           <p className="lead">
-          Gérez le seuil d’économie, les données locales, la mémoire Drive et les options avancées.
+          Apparence, options, sauvegarde de tes données et remise à zéro. Rien ici n’est nécessaire pour commencer.
         </p>
       </div>
 
@@ -271,10 +271,10 @@ export function SettingsPage() {
 
       <div className="settingsPanel">
         <div>
-          <h3>Options avancées</h3>
+          <h3>Options</h3>
           <p>
-            Ces options restent locales. Le remplissage d’un panier n’est lancé qu’après une action
-            visible et un consentement explicite ; il ne valide jamais la commande ni le paiement.
+            Ces options restent sur ton téléphone. Le remplissage d’un panier ne démarre qu’après ton
+            accord, et l’application ne commande ni ne paie jamais à ta place.
           </p>
         </div>
         {settingsStatus === 'loading' && <p className="panelText">Chargement des préférences...</p>}
@@ -313,12 +313,12 @@ export function SettingsPage() {
                   void handleExperimentalAddToCartChange(event.currentTarget.checked)
                 }
               />
-              <span>Afficher l’ajout panier expérimental</span>
+              <span>Remplir le panier du magasin pour moi (expérimental)</span>
             </label>
             <p className="panelText">
-              Affiche aussi les liens directs. Le bouton de validation peut demander à l’extension de
-              remplir le panier après ton accord ; vérifie toujours prix, quantités et substitutions sur
-              le site officiel avant toute commande.
+              Avec cette option, l’application peut remplir le panier sur le site du magasin, mais
+              seulement après ton accord. Elle ne commande et ne paie jamais. Vérifie toujours le
+              panier sur le site du magasin avant de commander.
             </p>
             <label className="checkboxLabel">
               <input
@@ -330,14 +330,13 @@ export function SettingsPage() {
                   void handleOpenFoodFactsNameSearchChange(event.currentTarget.checked)
                 }
               />
-              <span>Chercher la fiche produit par son nom (Open Food Facts)</span>
+              <span>Retrouver un produit par son nom (Open Food Facts)</span>
             </label>
             <p className="panelText">
-              Ajoute un bouton dans l’écran d’ajout pour retrouver la marque, le format et surtout
-              le code-barres d’un produit tapé au clavier — c’est le code-barres qui permet ensuite
-              d’identifier la bonne fiche en magasin sans validation manuelle. Sans cette option,
-              rien de ce que tu tapes ne quitte l’appareil ; avec elle, les mots tapés sont envoyés
-              à Open Food Facts, mais seulement quand tu touches ce bouton.
+              Ajoute un bouton pour retrouver la marque, le format et le code-barres d’un produit à
+              partir de son nom. Open Food Facts est une base de données libre de produits
+              alimentaires. Sans cette option, rien de ce que tu tapes ne quitte ton téléphone ; avec
+              elle, les mots tapés lui sont envoyés, seulement quand tu touches le bouton.
             </p>
           </>
         )}
@@ -345,10 +344,10 @@ export function SettingsPage() {
 
       <div className="settingsPanel">
         <div>
-          <h3>Export/import local</h3>
+          <h3>Sauvegarder ou restaurer mes données</h3>
           <p>
-            Le fichier JSON peut contenir tes habitudes d’achat, magasins, prix et listes. Il reste
-            généré localement, sans upload.
+            Le fichier de sauvegarde peut contenir tes habitudes d’achat, tes magasins, tes prix et
+            tes listes. Il est créé sur ton téléphone et n’est envoyé nulle part.
           </p>
           {settings && (
             <p className={isBackupStale(settings.lastBackupExportedAt) ? 'panelText panelTextWarning' : 'panelText'}>
@@ -357,7 +356,7 @@ export function SettingsPage() {
           )}
         </div>
         <fieldset className="checkboxGroup">
-          <legend>Données à exporter</legend>
+          <legend>Données à sauvegarder</legend>
           {BACKUP_GROUPS.map((group) => (
             <label className="checkboxLabel" key={group.key}>
               <input
@@ -377,10 +376,10 @@ export function SettingsPage() {
             disabled={backupStatus === 'working' || selectedTables.length === 0}
             title={selectedTables.length === 0 ? 'Sélectionne au moins une catégorie de données.' : undefined}
           >
-            Preparer export JSON
+            Préparer la sauvegarde
           </button>
           <label className="buttonLink fileButton">
-            Importer JSON
+            Restaurer une sauvegarde
             <input
               id="backup-import-file"
               name="backupImportFile"
@@ -391,9 +390,9 @@ export function SettingsPage() {
           </label>
         </div>
         <p className="panelText">
-          L’export ne contient que les catégories cochées ci-dessus. L’import remplace les données
-          locales des catégories présentes dans le fichier seulement (fusion sélective) — le reste de
-          tes données locales n’est jamais touché — et seulement après confirmation.
+          Le fichier ne contient que les catégories cochées ci-dessus. Restaurer une sauvegarde
+          remplace seulement les catégories présentes dans le fichier ; le reste de tes données n’est
+          jamais touché. Rien n’est remplacé sans ta confirmation.
         </p>
         {backupMessage && (
           <p className={backupStatus === 'error' ? 'panelText panelTextDanger' : 'panelText'}>
@@ -403,13 +402,13 @@ export function SettingsPage() {
         {pendingExportSummary && (
           <div className="confirmPanel">
             <p>
-              Export prêt : {pendingExportSummary.products} produit(s),{' '}
+              Sauvegarde prête : {pendingExportSummary.products} produit(s),{' '}
               {pendingExportSummary.shoppingListItems} article(s), {pendingExportSummary.stores}{' '}
               magasin(s), {pendingExportSummary.priceSnapshots} prix et{' '}
               {pendingExportSummary.validatedBaskets} panier(s) validé(s).
             </p>
             <button className="primaryButton" type="button" onClick={() => void handleDownloadPreparedBackup()}>
-              Telecharger JSON
+              Télécharger la sauvegarde
             </button>
             <button
               className="secondaryButton"
@@ -417,7 +416,7 @@ export function SettingsPage() {
               onClick={() => {
                 setPendingExport(null);
                 setPendingExportSummary(null);
-                setBackupMessage('Export annule.');
+                setBackupMessage('Sauvegarde annulée.');
               }}
             >
               Annuler
@@ -427,7 +426,7 @@ export function SettingsPage() {
         {pendingImport && (
           <div className="confirmPanel">
             <p>
-              Confirmer le remplacement des données locales par cette sauvegarde JSON ? Seules les
+              Confirmer le remplacement de tes données par cette sauvegarde ? Seules les
               catégories présentes dans le fichier sont remplacées ({formatIncludedGroups(pendingImport.includedTables)}) —
               le reste de tes données locales reste intact. Cette action ne contacte aucun serveur.
             </p>
@@ -448,16 +447,14 @@ export function SettingsPage() {
         )}
       </div>
 
-      <SyncSettingsPanel />
-
       <div className="settingsPanel">
         <div>
-          <h3>Mémoire de recherche Drive</h3>
+          <h3>Produits introuvables retenus</h3>
           <p>
-            L’extension retient 3 jours les produits jugés « introuvables » chez un magasin, pour ne
-            pas relancer une recherche vouée à l’échec à chaque rafraîchissement. Vider cette mémoire
-            force une nouvelle recherche pour tous les produits au prochain rafraîchissement — utile si
-            un produit a été écarté à tort (bug corrigé, faux négatif).
+            Le connecteur retient pendant 3 jours les produits qu’il n’a pas trouvés dans un magasin,
+            pour ne pas les rechercher en vain à chaque mise à jour des prix. Si tu vides cette liste,
+            tous les produits seront cherchés à nouveau à la prochaine mise à jour. C’est utile si un
+            produit a été écarté à tort.
           </p>
         </div>
         <button className="primaryButton" type="button" onClick={() => void handleClearSearchMemory()}>
@@ -477,12 +474,12 @@ export function SettingsPage() {
           mobile avant release publique). */}
       <div className="settingsPanel">
         <div>
-          <h3>Réinitialisation « paramètres d'usine »</h3>
+          <h3>Tout effacer</h3>
           <p>
-            Supprime définitivement TOUTES les données locales (produits, magasins, prix, listes,
-            paniers validés, réglages) — rien n'est remis à la place, contrairement à « Réinitialiser »
-            ci-dessus. Aucun export automatique n'est fait avant : télécharge une sauvegarde JSON si tu
-            veux la garder. Action irréversible, sans upload.
+            Supprime définitivement TOUTES tes données sur cet appareil (produits, magasins, prix,
+            listes, paniers validés, réglages). Rien n’est remis à la place. Aucune sauvegarde n’est
+            faite automatiquement avant : fais une sauvegarde si tu veux tout garder. Cette action est
+            définitive.
           </p>
         </div>
         {!pendingWipeConfirm ? (
@@ -492,7 +489,7 @@ export function SettingsPage() {
             onClick={() => setPendingWipeConfirm(true)}
             disabled={wipeStatus === 'working'}
           >
-            Tout effacer (usine)
+            Tout effacer
           </button>
         ) : (
           <div className="confirmPanel">
@@ -512,9 +509,7 @@ export function SettingsPage() {
         )}
         {wipeStatus === 'done' && (
           <p className="panelText">
-            Toutes les données locales ont été effacées. Note : certaines pages réamorcent
-            automatiquement des données de démonstration à la prochaine navigation si leur table est
-            vide (comportement existant, indépendant de ce bouton).
+            Toutes tes données ont été effacées de cet appareil.
           </p>
         )}
         {wipeStatus === 'error' && (
@@ -543,14 +538,14 @@ function isBackupStale(lastBackupExportedAt: string | undefined) {
 
 function formatBackupReminder(lastBackupExportedAt: string | undefined) {
   if (!lastBackupExportedAt) {
-    return 'Toutes les données sont locales uniquement (aucun serveur) — aucun export effectué pour l’instant.';
+    return 'Toutes les données sont locales uniquement (aucun serveur) — aucune sauvegarde faite pour l’instant.';
   }
   const daysSince = Math.floor((Date.now() - new Date(lastBackupExportedAt).getTime()) / (24 * 60 * 60 * 1000));
   if (daysSince >= BACKUP_REMINDER_DAYS) {
-    return `Dernier export il y a ${daysSince} jours — pense à en refaire un.`;
+    return `Dernière sauvegarde il y a ${daysSince} jours — pense à en refaire une.`;
   }
   if (daysSince === 0) {
-    return 'Dernier export : aujourd’hui.';
+    return 'Dernière sauvegarde : aujourd’hui.';
   }
-  return `Dernier export il y a ${daysSince} jour(s).`;
+  return `Dernière sauvegarde il y a ${daysSince} jour(s).`;
 }

@@ -10,6 +10,7 @@ import {
 } from '../../types/domain';
 import { type ShoppingListRow } from '../shopping-list/shoppingListService';
 import { checkPriceCoherence } from '../comparison/priceCoherence';
+import { storeLabels } from '../stores/storeLabels';
 import { listSelectedStores } from '../stores/storeLocatorService';
 import { isVerboseDiagnosticsEnabled } from './verboseDiagnostics';
 import {
@@ -625,7 +626,7 @@ export async function runDriveRefresh(
     console.log('[driveRefreshService] Stores loaded:', stores.map((s) => ({ storeKey: s.storeKey, driveUrl: s.driveUrl })));
   }
   if (stores.length === 0) {
-    return { ran: false, reason: "Aucun magasin configuré dans les réglages." };
+    return { ran: false, reason: 'Aucun magasin choisi : choisis ton Leclerc Drive et ton Courses U sur la page Accueil.' };
   }
   const productIds = [...new Set(rows.map((row) => row.product.id))];
   if (productIds.length === 0) {
@@ -824,6 +825,10 @@ export async function runDriveRefresh(
     // et courses-u-collector.js) : preuve directe que cette fiche précise
     // n'existe plus, à distinguer d'un simple échec de recherche générale
     // (voir le commentaire de markMatchedPriceUnavailable).
+    // Page du magasin cachée (Firefox mis en arrière-plan) : aucune recherche
+    // n'a eu lieu, l'échec ne dit rien du produit. Le dernier prix connu reste
+    // valable jusqu'au comparatif suivant.
+    if (error.code === 'STORE_TAB_HIDDEN') continue;
     const manualUrlConfirmedInvalid = MANUAL_URL_CONFIRMED_INVALID_CODES.has(error.code);
     await markMatchedPriceUnavailable(storeKey, error.productId, manualUrlConfirmedInvalid);
 
@@ -984,7 +989,7 @@ export async function runLivePick(
   const stores = await listSelectedStores();
   const store = stores.find((candidate) => candidate.storeKey === storeKey);
   if (!store) {
-    return { ok: false, reason: `Magasin ${storeKey} non configuré dans les réglages.` };
+    return { ok: false, reason: `Aucun magasin ${storeLabels[storeKey]} choisi : choisis-le sur la page Accueil.` };
   }
 
   const bridge = getExtensionBridge();

@@ -28,10 +28,10 @@ export const CHROME_ONLY_KEYS = ['minimum_chrome_version'];
 const DOC_KEY_PREFIX = '//';
 
 export function mergeFirefoxManifest(base, overlay) {
-  // Fusion de surface volontaire : l'overlay ne porte que des clés de premier
-  // niveau absentes de la base (browser_specific_settings). Fusionner en
-  // profondeur permettrait de surcharger une permission ou un content script
-  // à moitié — exactement l'ambiguïté que ce fichier supprime.
+  // Fusion de surface volontaire : l'overlay ne porte que les métadonnées
+  // Gecko et le contexte de fond Firefox. Fusionner en profondeur permettrait
+  // de surcharger une permission ou un content script à moitié — exactement
+  // l'ambiguïté que ce fichier supprime.
   const merged = { ...base, ...overlay };
   for (const key of Object.keys(merged)) {
     if (key.startsWith(DOC_KEY_PREFIX)) delete merged[key];

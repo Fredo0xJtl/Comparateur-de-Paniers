@@ -1,6 +1,7 @@
 import { db } from '../../db/db';
 import { DB_VERSION } from '../../db/schema';
 import {
+  type DriveManualOverrideEntry,
   type PriceSnapshot,
   type Product,
   type ProductCandidate,
@@ -28,7 +29,12 @@ export const BACKUP_TABLE_KEYS = [
   'shoppingLists',
   'shoppingListItems',
   'settings',
-  'validatedBaskets'
+  'validatedBaskets',
+  // Corrections manuelles (URL produit collée à la main) : saisies par
+  // l'utilisateur, donc à sauvegarder. Absente des sauvegardes plus anciennes,
+  // voir validateLocalBackup. `driveSearchMemory` reste hors sauvegarde : c'est
+  // un cache, reconstruit tout seul.
+  'driveManualOverrides'
 ] as const;
 export type BackupTableKey = (typeof BACKUP_TABLE_KEYS)[number];
 
@@ -41,6 +47,7 @@ export type LocalBackupData = {
   shoppingListItems: ShoppingListItem[];
   settings: UserSettings[];
   validatedBaskets: ValidatedBasket[];
+  driveManualOverrides: DriveManualOverrideEntry[];
 };
 
 export type LocalBackup = {
@@ -64,6 +71,7 @@ export type ImportReport = {
   shoppingListItems: number;
   settings: number;
   validatedBaskets: number;
+  driveManualOverrides: number;
 };
 
 export type LocalBackupSummary = {
@@ -85,8 +93,17 @@ export async function exportLocalBackup(selectedTables?: readonly BackupTableKey
     selectedTables && selectedTables.length > 0 ? selectedTables : BACKUP_TABLE_KEYS
   );
 
-  const [products, userStores, productCandidates, priceSnapshots, shoppingLists, shoppingListItems, settings, validatedBaskets] =
-    await Promise.all([
+  const [
+    products,
+    userStores,
+    productCandidates,
+    priceSnapshots,
+    shoppingLists,
+    shoppingListItems,
+    settings,
+    validatedBaskets,
+    driveManualOverrides
+  ] = await Promise.all([
       included.has('products') ? db.products.toArray() : Promise.resolve([]),
       included.has('userStores') ? db.userStores.toArray() : Promise.resolve([]),
       included.has('productCandidates') ? db.productCandidates.toArray() : Promise.resolve([]),
@@ -94,7 +111,8 @@ export async function exportLocalBackup(selectedTables?: readonly BackupTableKey
       included.has('shoppingLists') ? db.shoppingLists.toArray() : Promise.resolve([]),
       included.has('shoppingListItems') ? db.shoppingListItems.toArray() : Promise.resolve([]),
       included.has('settings') ? db.settings.toArray() : Promise.resolve([]),
-      included.has('validatedBaskets') ? db.validatedBaskets.toArray() : Promise.resolve([])
+      included.has('validatedBaskets') ? db.validatedBaskets.toArray() : Promise.resolve([]),
+      included.has('driveManualOverrides') ? db.driveManualOverrides.toArray() : Promise.resolve([])
     ]);
 
   return {
@@ -111,7 +129,8 @@ export async function exportLocalBackup(selectedTables?: readonly BackupTableKey
       shoppingLists,
       shoppingListItems,
       settings,
-      validatedBaskets
+      validatedBaskets,
+      driveManualOverrides
     }
   };
 }
@@ -163,7 +182,8 @@ export async function importLocalBackup(backup: LocalBackup): Promise<ImportRepo
       db.shoppingLists,
       db.shoppingListItems,
       db.settings,
-      db.validatedBaskets
+      db.validatedBaskets,
+      db.driveManualOverrides
     ],
     async () => {
       const clears: Promise<unknown>[] = [];
@@ -200,6 +220,10 @@ export async function importLocalBackup(backup: LocalBackup): Promise<ImportRepo
         clears.push(db.validatedBaskets.clear());
         puts.push(db.validatedBaskets.bulkPut(data.validatedBaskets));
       }
+      if (included.has('driveManualOverrides')) {
+        clears.push(db.driveManualOverrides.clear());
+        puts.push(db.driveManualOverrides.bulkPut(data.driveManualOverrides));
+      }
       await Promise.all(clears);
       await Promise.all(puts);
     }
@@ -213,7 +237,8 @@ export async function importLocalBackup(backup: LocalBackup): Promise<ImportRepo
     shoppingLists: included.has('shoppingLists') ? data.shoppingLists.length : 0,
     shoppingListItems: included.has('shoppingListItems') ? data.shoppingListItems.length : 0,
     settings: included.has('settings') ? data.settings.length : 0,
-    validatedBaskets: included.has('validatedBaskets') ? data.validatedBaskets.length : 0
+    validatedBaskets: included.has('validatedBaskets') ? data.validatedBaskets.length : 0,
+    driveManualOverrides: included.has('driveManualOverrides') ? data.driveManualOverrides.length : 0
   };
 }
 
@@ -234,7 +259,14 @@ function validateLocalBackup(value: unknown): LocalBackup {
     throw new Error('Sauvegarde invalide');
   }
 
-  const data = value.data;
+  // Copie : la sauvegarde reçue n'est jamais modifiée sur place.
+  const data: Record<string, unknown> = { ...value.data };
+
+  // Table ajoutée après coup : une sauvegarde plus ancienne ne la contient pas.
+  // Elle est alors traitée comme "non incluse", pour que l'import ne vide pas
+  // les corrections manuelles déjà présentes sur l'appareil.
+  const hasManualOverrides = data.driveManualOverrides !== undefined;
+  if (!hasManualOverrides) data.driveManualOverrides = [];
 
   for (const key of BACKUP_TABLE_KEYS) {
     if (!Array.isArray(data[key])) {
@@ -246,9 +278,10 @@ function validateLocalBackup(value: unknown): LocalBackup {
   }
 
   const includedTables = normalizeIncludedTables(value.includedTables);
+  if (!hasManualOverrides) includedTables.delete('driveManualOverrides');
   validateEntities(data as unknown as LocalBackupData, includedTables);
 
-  return { ...value, includedTables: [...includedTables] } as LocalBackup;
+  return { ...value, data, includedTables: [...includedTables] } as LocalBackup;
 }
 
 // Absent (backup v2) ou vide : traité comme "tout est inclus", exactement le
@@ -302,6 +335,17 @@ function validateEntities(data: LocalBackupData, includedTables: Set<BackupTable
       isPositiveFinite(item.quantity) && isNonNegativeFinite(item.lineTotal)
     )
   );
+
+  // Pas de champ `id` ici : la clé est le couple produit + magasin.
+  const overrideKeys = new Set<string>();
+  data.driveManualOverrides.forEach((entry, index) => {
+    const valid =
+      isRecord(entry) && isNonEmptyString(entry.productId) && isStoreKey(entry.storeKey) &&
+      typeof entry.productUrl === 'string' && isSafeOptionalUrl(entry.productUrl) && isIsoDateString(entry.updatedAt);
+    const key = valid ? `${entry.productId}\u0000${entry.storeKey}` : '';
+    if (!valid || overrideKeys.has(key)) throw new Error(`Sauvegarde invalide : driveManualOverrides[${index}]`);
+    overrideKeys.add(key);
+  });
 
   // Une vérification croisée n'a de sens que si LES DEUX tables concernées
   // ont été exportées : un export ciblé "juste les prix" n'a par construction
