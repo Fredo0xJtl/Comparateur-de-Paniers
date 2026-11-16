@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openStoreLoginOnPage as openLeclerc } from './leclerc/leclerc-collector.js';
+import { openStoreLoginOnPage as openLeclerc, readLeclercSessionStateOnPage } from './leclerc/leclerc-collector.js';
 import { openStoreLoginOnPage as openCoursesU } from './courses-u/courses-u-collector.js';
 
 // Les deux copies (fonctions injectées, donc autonomes) doivent se comporter
@@ -84,5 +84,27 @@ describe.each([
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original });
     }
+  });
+});
+
+describe('readLeclercSessionStateOnPage — bouton « Connexion » du site mobile', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('reconnaît le libellé exact « Connexion » comme déconnecté, et le bouton est ensuite cliqué', () => {
+    document.body.innerHTML = '<a id="c" href="#">Connexion</a>';
+    const link = document.getElementById('c');
+    link.getClientRects = () => [{}];
+    const click = vi.spyOn(link, 'click');
+    expect(readLeclercSessionStateOnPage()).toEqual({ signedIn: false, evidence: 'connexion' });
+    expect(openLeclerc()).toEqual({ opened: true, evidence: 'clic_bouton_connexion' });
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne prend pas « Informations de connexion » pour un bouton de connexion', () => {
+    document.body.innerHTML = '<a id="c" href="/infos">Informations de connexion</a>';
+    document.getElementById('c').getClientRects = () => [{}];
+    expect(readLeclercSessionStateOnPage().signedIn).not.toBe(false);
   });
 });

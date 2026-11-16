@@ -1015,6 +1015,40 @@ describe('addToCartLeclercStore — vérification de connexion (contrôle unique
   // l'inverse : ne JAMAIS chercher un produit tant que la connexion n'est
   // pas confirmée — un état indéterminé (signedIn: null) doit donc bloquer
   // exactement comme un état franchement déconnecté.
+  it("ouvre la connexion quand le bouton n'apparaît qu'après le premier contrôle", async () => {
+    const states = [{ signedIn: null, evidence: null }, { signedIn: null, evidence: null }, { signedIn: false, evidence: 'connexion' }];
+    const openLogin = vi.fn(() => ({ opened: true, evidence: 'clic_bouton_connexion' }));
+    const scripting = {
+      executeScript: makeDispatcher({
+        dismissCookieConsentOnPage: () => ({ dismissed: false }),
+        readPublicLeclercPageState: () => ({
+          hostname: 'fd4-courses.leclercdrive.fr',
+          pathname: '/magasin-1/recherche.aspx',
+          hasCaptcha: false,
+          hasStorePrompt: false,
+          hasCatalog: true
+        }),
+        readLeclercSessionStateOnPage: () => states.shift() ?? { signedIn: false, evidence: 'connexion' },
+        openStoreLoginOnPage: openLogin
+      })
+    };
+
+    const result = await addToCartLeclercStore({
+      scripting,
+      tabId: 30,
+      signal: new AbortController().signal,
+      job: { jobId: 'job-1234567890abcdef' },
+      store: { storeKey: 'leclerc', localStoreId: 'store-1' },
+      items: [{ productId: 'product-lait', name: 'Lait demi écrémé', quantity: 1 }]
+    });
+
+    expect(openLogin).toHaveBeenCalledTimes(1);
+    // Le remplissage reste bloqué dès le premier contrôle (état indéterminé).
+    expect(result.errors).toEqual([
+      { storeKey: 'leclerc', code: 'CART_LOGIN_REQUIRED', details: { evidence: null, loginOpened: true } }
+    ]);
+  });
+
   it('bloque aussi sur un état de connexion indéterminé (pas seulement "déconnecté")', async () => {
     const scripting = {
       executeScript: makeDispatcher({

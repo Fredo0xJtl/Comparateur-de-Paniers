@@ -1429,7 +1429,16 @@ export async function addToCartLeclercStore({
     // indéterminé, l'utilisateur est peut-être connecté (relecture du 16/11).
     let login = null;
     try {
-      if (session?.signedIn === false) login = await runPageAction(scripting, tabId, openStoreLoginOnPage, []);
+      // Page encore en cours d'affichage (relevé réel du 16/11 chez Leclerc) :
+      // le bouton de connexion n'existe pas encore au premier contrôle. On
+      // relit l'état quelques fois (3 s au plus) avant d'ouvrir l'écran de
+      // connexion. Le remplissage, lui, reste bloqué dès le premier contrôle.
+      let state = session;
+      for (let attempt = 0; state?.signedIn === null && attempt < 6; attempt += 1) {
+        await wait(500, signal);
+        state = await runPageAction(scripting, tabId, readLeclercSessionStateOnPage, []);
+      }
+      if (state?.signedIn === false) login = await runPageAction(scripting, tabId, openStoreLoginOnPage, []);
     } catch {
       login = null;
     }
@@ -2599,11 +2608,18 @@ export function readLeclercSessionStateOnPage() {
     return { signedIn: true, evidence: matchedPatternCode(pageText, SIGNED_IN_TEXT_PATTERNS) };
   }
 
-  const signedOutControl = controls.find((element) =>
-    SIGNED_OUT_PATTERNS.some(({ pattern }) => pattern.test(signalOf(element)))
+  // Site mobile (relevé réel du 16/11) : le bouton s'intitule seulement
+  // « Connexion ». Libellé exact uniquement : « Dernière connexion le … » ou
+  // « Informations de connexion » ne doivent pas compter.
+  const EXACT_SIGNED_OUT = { code: 'connexion', pattern: /^connexion$/i };
+  const signedOutControl = controls.find(
+    (element) =>
+      SIGNED_OUT_PATTERNS.some(({ pattern }) => pattern.test(signalOf(element))) ||
+      EXACT_SIGNED_OUT.pattern.test(String(element.textContent || '').replace(/\s+/g, ' ').trim())
   );
   if (signedOutControl) {
-    return { signedIn: false, evidence: matchedPatternCode(signalOf(signedOutControl), SIGNED_OUT_PATTERNS) };
+    const code = matchedPatternCode(signalOf(signedOutControl), SIGNED_OUT_PATTERNS);
+    return { signedIn: false, evidence: code === 'unspecified' ? EXACT_SIGNED_OUT.code : code };
   }
 
   // Ni l'un ni l'autre signal : état indéterminé. On ne bloque jamais dessus

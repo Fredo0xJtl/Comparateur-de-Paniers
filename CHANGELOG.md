@@ -1,10 +1,10 @@
 # Changelog
 
-## Connecteur 0.7.15 - Connexion au magasin et panier partiel
+## Connecteur 0.7.17 - Connexion au magasin et panier partiel
 
 - **Pas connecté au moment de remplir le panier** : le connecteur reste sur le site du magasin et ouvre son écran de connexion, au lieu de revenir à l'application. Il ne lit ni ne remplit jamais les identifiants : tu les saisis toi-même, puis tu reviens relancer le remplissage.
 - **Panier rempli en partie : le montant à vérifier est le bon.** Si des produits n'ont pas pu être ajoutés (indisponibles, introuvables), le message indique le montant que doit afficher le panier du site, celui des produits à ajouter soi-même, puis le total prévu.
-- Ciblage du bouton de connexion resserré après relecture : jamais de déconnexion, de création de compte, de connexion via un autre service, de lien vers un autre site ni de bouton d'un formulaire déjà affiché ; rien n'est cliqué si l'état de connexion est incertain.
+- Ciblage du bouton de connexion resserré après relecture : jamais de déconnexion, de création de compte, de connexion via un autre service, de lien vers un autre site ni de bouton d'un formulaire déjà affiché ; rien n’est cliqué si l’état de connexion est incertain. Le bouton « Connexion » du site mobile Leclerc est reconnu (0.7.16), et le connecteur attend jusqu’à 3 s que la page ait affiché ce bouton (0.7.17).
 
 ## Application - Formats différents et usage sur téléphone
 

@@ -444,7 +444,16 @@ export async function addToCartCoursesUStore({ scripting, tabs, tabId, job, stor
     // indéterminé, l'utilisateur est peut-être connecté (relecture du 16/11).
     let login = null;
     try {
-      if (session?.signedIn === false) login = await run(scripting, tabId, openStoreLoginOnPage, []);
+      // Page encore en cours d'affichage (relevé réel du 16/11 chez Leclerc) :
+      // le bouton de connexion n'existe pas encore au premier contrôle. On
+      // relit l'état quelques fois (3 s au plus) avant d'ouvrir l'écran de
+      // connexion. Le remplissage, lui, reste bloqué dès le premier contrôle.
+      let state = session;
+      for (let attempt = 0; state?.signedIn === null && attempt < 6; attempt += 1) {
+        await wait(500, signal);
+        state = await run(scripting, tabId, readCoursesUSessionStateOnPage, []);
+      }
+      if (state?.signedIn === false) login = await run(scripting, tabId, openStoreLoginOnPage, []);
     } catch {
       login = null;
     }
