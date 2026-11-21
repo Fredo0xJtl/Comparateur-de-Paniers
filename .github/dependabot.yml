@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # typescript-eslint n'accepte pas encore TypeScript 6.1 et plus
+      # (dépendance de pair `typescript <6.1.0`). Retirer cette règle dès
+      # qu'une version de typescript-eslint l'accepte.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
 
   - package-ecosystem: github-actions
     directory: /

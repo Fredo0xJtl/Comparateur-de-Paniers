@@ -32,15 +32,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Écouter le retour en avant-plan et notifier les clients
-// pour qu'ils restaurent l'état au lieu de forcer un refresh
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'CLIENT_READY') {
-    // Client a repris du focus — pas de refresh, juste restauration d'état
-    event.ports[0].postMessage({ type: 'RESTORE_STATE' });
-  }
-});
-
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
     return;

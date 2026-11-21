@@ -10,31 +10,21 @@ import {
   type ShoppingListRow
 } from '../shopping-list/shoppingListService';
 import { compareShoppingList, type ComparisonResult } from './comparisonEngine';
-import { refreshPricesForRows, type PriceRefreshReport } from './priceRefreshService';
 
 export type ActiveComparison = {
   rows: ShoppingListRow[];
   candidates: ProductCandidate[];
   priceSnapshots: PriceSnapshot[];
   settings: UserSettings;
-  refreshReport?: PriceRefreshReport;
   result: ComparisonResult | null;
 };
 
-export type LoadActiveComparisonOptions = {
-  refreshPrices?: boolean;
-};
-
-export async function loadActiveComparison(
-  options: LoadActiveComparisonOptions = {}
-): Promise<ActiveComparison> {
+// Ne consulte aucun magasin : lit les prix déjà relevés par le connecteur
+// (« Actualiser les prix Drive » sur la page Comparer).
+export async function loadActiveComparison(): Promise<ActiveComparison> {
   await ensureDemoData();
 
   const activeList = await getActiveShoppingListWithItems();
-  const refreshReport =
-    options.refreshPrices && activeList.rows.length > 0
-      ? await refreshPricesForRows(activeList.rows)
-      : undefined;
   const [candidates, priceSnapshots, storedSettings] = await Promise.all([
     db.productCandidates.toArray(),
     db.priceSnapshots.toArray(),
@@ -50,7 +40,6 @@ export async function loadActiveComparison(
     candidates,
     priceSnapshots,
     settings,
-    refreshReport,
     result:
       activeList.rows.length === 0
         ? null

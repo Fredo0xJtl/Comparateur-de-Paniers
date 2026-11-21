@@ -155,8 +155,9 @@ describe('storeLocatorService', () => {
     };
 
     // Temporarily override global localStorage
-    const originalLocalStorage = (globalThis as any).localStorage;
-    (globalThis as any).localStorage = mockLocalStorage;
+    // vi.stubGlobal plutôt qu'une affectation : sous jsdom 31, `localStorage`
+    // n'a qu'un accesseur en lecture et l'affectation échoue.
+    vi.stubGlobal('localStorage', mockLocalStorage);
 
     try {
       // Add a store WITHOUT driveUrl to IndexedDB
@@ -190,7 +191,7 @@ describe('storeLocatorService', () => {
       expect(saved?.driveUrl).toBe('https://leclercdrive.fr/magasin-restore-test');
     } finally {
       // Restore original localStorage
-      (globalThis as any).localStorage = originalLocalStorage;
+      vi.unstubAllGlobals();
     }
   });
 });

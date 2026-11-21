@@ -80,8 +80,9 @@ describe('driveRefreshService URL persistence', () => {
       length: mockLocalStorageData.size
     };
 
-    const originalLocalStorage = (globalThis as any).localStorage;
-    (globalThis as any).localStorage = mockLocalStorage;
+    // vi.stubGlobal plutôt qu'une affectation : sous jsdom 31, `localStorage`
+    // n'a qu'un accesseur en lecture et l'affectation échoue.
+    vi.stubGlobal('localStorage', mockLocalStorage);
 
     try {
       // Step 1: User saves Leclerc URL
@@ -126,7 +127,7 @@ describe('driveRefreshService URL persistence', () => {
       expect(restoredStores[0].driveUrl).toBeDefined();
       expect(restoredStores[0].driveUrl).not.toBe('');
     } finally {
-      (globalThis as any).localStorage = originalLocalStorage;
+      vi.unstubAllGlobals();
     }
   });
 });

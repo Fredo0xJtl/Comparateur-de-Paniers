@@ -76,23 +76,4 @@ describe('comparisonService', () => {
     expect(comparison.result?.totals.leclerc).toBeNull();
     expect(comparison.result?.totals.hyperu).toBeNull();
   });
-
-  it('can refresh active prices before returning comparison data', async () => {
-    await db.priceSnapshots.toCollection().modify((snapshot) => {
-      snapshot.checkedAt = '2020-01-01T00:00:00.000Z';
-    });
-    await addProductToActiveList('prod-ice-tea-peche');
-
-    const comparison = await loadActiveComparison({ refreshPrices: true });
-    const refreshedSnapshot = comparison.priceSnapshots.find(
-      (snapshot) => snapshot.id === 'price-ice-tea-leclerc'
-    );
-    const untouchedSnapshot = comparison.priceSnapshots.find(
-      (snapshot) => snapshot.id === 'price-lait-leclerc'
-    );
-
-    expect(comparison.refreshReport?.updated).toBe(3);
-    expect(refreshedSnapshot?.checkedAt).not.toBe('2020-01-01T00:00:00.000Z');
-    expect(untouchedSnapshot?.checkedAt).toBe('2020-01-01T00:00:00.000Z');
-  });
 });

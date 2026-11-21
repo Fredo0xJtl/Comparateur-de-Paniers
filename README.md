@@ -100,7 +100,7 @@ Le reste de ce document s'adresse à qui veut lire, modifier ou construire le pr
 
 ## Installer et lancer
 
-Prérequis : **Node.js 22** ou plus récent.
+Prérequis : **Node.js 26** (version LTS actuelle) ou au moins 24.15.
 
 ```bash
 npm install

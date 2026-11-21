@@ -84,7 +84,7 @@ export function ComparePage() {
 
     async function load() {
       try {
-        const loadedComparison = await loadActiveComparison({ refreshPrices: true });
+        const loadedComparison = await loadActiveComparison();
         if (!ignore) {
           setComparison(loadedComparison);
           setSavingThresholdEuro(loadedComparison.settings.savingThresholdEuro);
@@ -253,7 +253,7 @@ export function ComparePage() {
             ? ` ${countOf(outcome.diagnostic.summary.failed, 'produit non relu', 'produits non relus')} : ancien prix écarté, relance l’actualisation ou vérifie plus bas.`
             : '')
       );
-      const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+      const loadedComparison = await loadActiveComparison();
       setComparison(loadedComparison);
 
       // Le `result` du rendu (calculé par useMemo) ne sera à jour qu'au
@@ -308,7 +308,7 @@ export function ComparePage() {
 
   async function handleForceStore(itemId: string, storeKey: StoreKey | null) {
     await setShoppingListItemStoreOverride(itemId, storeKey);
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
@@ -322,13 +322,13 @@ export function ComparePage() {
     for (const decision of toMove) {
       await setShoppingListItemStoreOverride(decision.itemId, storeKey);
     }
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
   async function handleForceCandidate(itemId: string, candidateId: string | null) {
     await setShoppingListItemCandidateOverride(itemId, candidateId);
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
@@ -339,7 +339,7 @@ export function ComparePage() {
   // définitivement non validable (audit du 02/09, F-01/F-02).
   async function handleAcknowledgeWarnings(itemId: string) {
     await setShoppingListItemWarningsAcknowledged(itemId, true);
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
@@ -348,7 +348,7 @@ export function ComparePage() {
   // besoin d'écrire un forcedCandidateId ici, juste recharger pour que le
   // moteur retrie avec ce nouveau candidat fiable.
   async function handleCandidateConfirmed(_itemId: string) {
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
@@ -358,7 +358,7 @@ export function ComparePage() {
   // refresh qui, s'il retrouve la même carte, la proposera à nouveau).
   async function handleRejectCandidate(candidateId: string) {
     await setProductCandidateRejected(candidateId, true);
-    const loadedComparison = await loadActiveComparison({ refreshPrices: false });
+    const loadedComparison = await loadActiveComparison();
     setComparison(loadedComparison);
   }
 
@@ -431,7 +431,7 @@ export function ComparePage() {
   }, [result]);
 
   async function handleNewList() {
-    setComparison(await loadActiveComparison({ refreshPrices: false }));
+    setComparison(await loadActiveComparison());
   }
 
   // Magasin conseillé quand des produits sont encore rangés dans l'autre.
@@ -1000,7 +1000,7 @@ export function ComparePage() {
             {/* Ce bouton n'interroge aucun magasin : il enregistre le seuil et
                 le confirme. Il déclenchait auparavant une « vérification
                 locale » qui ne consultait que les prix de démonstration
-                (mockAdapterFactory) — donc sur une vraie liste, toujours
+                (adaptateurs fictifs du prototype, supprimés depuis) — donc sur une vraie liste, toujours
                 « 0 prix mis à jour, N non disponible(s) », lu comme une panne.
                 Le seul rafraîchissement réel est « Actualiser les prix
                 Drive », plus bas. */}
